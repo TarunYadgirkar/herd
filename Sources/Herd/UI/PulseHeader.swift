@@ -82,14 +82,14 @@ private struct TileRow: View {
         case .gpu: GPUTile(utilization: system.gpuUtilization ?? 0, history: history.gpu)
         case .network:
             RateTile(
-                kind: .network, title: "Network",
+                kind: .network, title: "Network", quietCeiling: 102_400,
                 down: RateLine(name: "Download", rate: system.netInBps, series: history.netIn, color: Theme.netIn),
                 up: RateLine(name: "Upload", rate: system.netOutBps, series: history.netOut, color: Theme.netOut),
                 help: "Data coming in and going out over all network connections."
             )
         case .disk:
             RateTile(
-                kind: .disk, title: "Disk",
+                kind: .disk, title: "Disk", quietCeiling: 1_048_576,
                 down: RateLine(name: "Read", rate: system.diskReadBps, series: history.diskRead, color: Theme.netIn),
                 up: RateLine(name: "Write", rate: system.diskWriteBps, series: history.diskWrite, color: Theme.netOut),
                 help: "Data read from and written to your drives."
@@ -115,7 +115,7 @@ private struct Tile<Accessory: View, Content: View>: View {
     @ViewBuilder let content: Content
 
     private static var headerHeight: CGFloat { 18 }
-    private static var traceHeight: CGFloat { 30 }
+    private static var traceHeight: CGFloat { 34 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -127,14 +127,15 @@ private struct Tile<Accessory: View, Content: View>: View {
                 accessory
             }
             .frame(minHeight: Self.headerHeight)
-            content
+            HStack(alignment: .bottom, spacing: Theme.groupSpacing) {
+                content
+                if !traces.isEmpty { trace }
+            }
         }
         .padding(.horizontal, Theme.innerPadding)
         .padding(.vertical, Theme.itemSpacing)
         .frame(minWidth: kind.idealWidth, idealWidth: kind.idealWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(alignment: .bottom) { trace }
         .surface()
-        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
         .help(help)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(summary)
@@ -143,11 +144,12 @@ private struct Tile<Accessory: View, Content: View>: View {
     private var trace: some View {
         ZStack {
             ForEach(traces.indices, id: \.self) { index in
-                Sparkline(values: traces[index].series.values, color: traces[index].color, ceiling: traceCeiling)
+                Sparkline(values: traces[index].series.values, color: traces[index].color, ceiling: traceCeiling, fillsWidth: true)
             }
         }
+        .frame(minWidth: 0, maxWidth: .infinity)
         .frame(height: Self.traceHeight)
-        .opacity(0.9)
+        .clipped()
     }
 }
 
@@ -363,6 +365,7 @@ private struct RateLine {
 private struct RateTile: View {
     let kind: TileKind
     let title: String
+    let quietCeiling: Double
     let down: RateLine
     let up: RateLine
     let help: String
@@ -383,7 +386,7 @@ private struct RateTile: View {
         }
     }
 
-    private var sharedCeiling: Double { max(down.series.peak, up.series.peak) }
+    private var sharedCeiling: Double { max(down.series.peak, up.series.peak, quietCeiling) }
 
     private func rateText(_ line: RateLine, symbol: String) -> some View {
         HStack(spacing: 4) {

@@ -266,15 +266,17 @@ private struct TrendCell: View {
     var body: some View {
         if row.role == .group {
             let series = history(row.id).series(for: column)
-            Sparkline(values: series.values, color: color(series.latest), ceiling: column.heatRange.lowerBound * 2)
+            Sparkline(values: series.values, color: color(series.latest), ceiling: column.trendFloor)
                 .frame(height: 20)
                 .padding(.vertical, 2)
         }
     }
 
+    private static let heatedTrend = 0.6
+
     private func color(_ latest: Double) -> Color {
         let heat = column.heat(latest)
-        return heat > 0.5 ? Theme.heatColor(heat) : Theme.accent
+        return heat > Self.heatedTrend ? Theme.heatColor(heat) : Theme.accent
     }
 }
 

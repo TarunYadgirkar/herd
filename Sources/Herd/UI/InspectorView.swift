@@ -202,14 +202,13 @@ private struct MetricTile: View {
                 .foregroundStyle(.secondary)
             Text((isApproximate ? "≈ " : "") + column.format(value))
                 .font(.displaySmall)
-                .foregroundStyle(heat > 0.85 ? Theme.hot : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-            Meter(fraction: heat, color: Theme.heatColor(heat))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, Theme.itemSpacing)
+        .background(Theme.heatFill(heat), in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
         .surface()
         .accessibilityElement(children: .combine)
     }

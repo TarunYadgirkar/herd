@@ -65,10 +65,15 @@ enum Theme {
     static let groupSpacing: CGFloat = 16
     static let itemSpacing: CGFloat = 8
 
-    static let meterHeight: CGFloat = 3
+    static let cellRadius: CGFloat = 4
+    static let heatFillOpacity = 0.4
 
     static func heatColor(_ heat: Double) -> Color {
-        heat < 0.5 ? warm : hot
+        warm.mix(with: hot, by: heat)
+    }
+
+    static func heatFill(_ heat: Double) -> Color {
+        heatColor(heat).opacity(heatFillOpacity * heat)
     }
 
     static func pressureColor(_ pressure: MemoryPressure) -> Color {

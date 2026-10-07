@@ -79,11 +79,15 @@ struct Sparkline: View {
     var color: Color = Theme.accent
     var ceiling: Double?
     var capacity: Int?
+    var fillsWidth = false
 
     @Environment(\.historySamples) private var historySamples
 
+    private static let minimumPoints = 2
+
     var body: some View {
-        let capacity = capacity ?? historySamples
+        let window = capacity ?? historySamples
+        let capacity = fillsWidth ? max(min(values.count, window), Self.minimumPoints) : window
         let values = Array(values.suffix(capacity))
         Canvas { context, size in
             guard values.count > 1 else { return }
@@ -115,42 +119,15 @@ struct HeatValue: View {
     var isApproximate = false
 
     var body: some View {
-        let heat = column.heat(value)
         Text((isApproximate ? "≈ " : "") + column.format(value))
             .font(.metric)
-            .foregroundStyle(heat > 0.85 ? Theme.hot : .primary)
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .overlay(alignment: .bottom) {
-                if heat > 0 {
-                    Meter(fraction: heat, color: Theme.heatColor(heat))
-                        .offset(y: Self.meterDrop)
-                }
-            }
             .padding(.horizontal, 6)
-    }
-
-    private static let meterDrop: CGFloat = 5
-}
-
-struct Meter: View {
-    let fraction: Double
-    var color: Color = Theme.accent
-    var height: CGFloat = Theme.meterHeight
-
-    private static let minimumLength: CGFloat = 3
-
-    var body: some View {
-        GeometryReader { proxy in
-            Capsule()
-                .fill(Theme.track)
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(height * Self.minimumLength, proxy.size.width * min(max(fraction, 0), 1)))
-                }
-        }
-        .frame(height: height)
-        .accessibilityHidden(true)
+            .padding(.vertical, 2)
+            .background(
+                Theme.heatFill(column.heat(value)),
+                in: RoundedRectangle(cornerRadius: Theme.cellRadius, style: .continuous)
+            )
     }
 }
 
