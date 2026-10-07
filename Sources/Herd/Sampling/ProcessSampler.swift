@@ -56,11 +56,28 @@ final class ProcessSampler {
     }
 
     deinit {
+        pendingTopStop?.cancel()
         top.stop()
     }
 
+    // Restarting top costs about a second of CPU and blanks root processes until its second sample,
+    // so a quick Space switch or window cover keeps it running instead of churning.
+    private static let topIdleGrace: Duration = .seconds(120)
+    private var pendingTopStop: Task<Void, Never>?
+
     func setDetailVisible(_ isVisible: Bool) {
-        isVisible ? top.start() : top.stop()
+        pendingTopStop?.cancel()
+        pendingTopStop = nil
+        if isVisible {
+            top.start()
+            return
+        }
+        let top = top
+        pendingTopStop = Task {
+            try? await Task.sleep(for: Self.topIdleGrace)
+            guard !Task.isCancelled else { return }
+            top.stop()
+        }
     }
 
     func sample() -> [ProcessSample] {
