@@ -1,0 +1,52 @@
+import Darwin
+import Foundation
+
+struct KernelProcess {
+    let pid: pid_t
+    let ppid: pid_t
+    let uid: uid_t
+    let comm: String
+    let startTime: Date
+    let isStopped: Bool
+}
+
+enum KernelProcessList {
+    private static let fetchAttempts = 4
+
+    static func all() -> [KernelProcess] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
+        for _ in 0..<fetchAttempts {
+            var size = 0
+            guard sysctl(&mib, UInt32(mib.count), nil, &size, nil, 0) == 0 else { return [] }
+            let capacity = size / MemoryLayout<kinfo_proc>.stride + 32
+            var buffer = [kinfo_proc](repeating: kinfo_proc(), count: capacity)
+            size = capacity * MemoryLayout<kinfo_proc>.stride
+            let result = buffer.withUnsafeMutableBufferPointer {
+                sysctl(&mib, UInt32(mib.count), $0.baseAddress, &size, nil, 0)
+            }
+            if result != 0 && errno == ENOMEM { continue }
+            guard result == 0 else { return [] }
+            let count = size / MemoryLayout<kinfo_proc>.stride
+            return buffer.prefix(count).compactMap(makeProcess)
+        }
+        return []
+    }
+
+    private static func makeProcess(_ info: kinfo_proc) -> KernelProcess? {
+        let pid = info.kp_proc.p_pid
+        guard pid >= 0 else { return nil }
+        let start = info.kp_proc.p_un.__p_starttime
+        let comm = withUnsafeBytes(of: info.kp_proc.p_comm) { raw in
+            String(decoding: raw.prefix(while: { $0 != 0 }), as: UTF8.self)
+        }
+        let startTime = Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
+        return KernelProcess(
+            pid: pid,
+            ppid: info.kp_eproc.e_ppid,
+            uid: info.kp_eproc.e_ucred.cr_uid,
+            comm: comm,
+            startTime: startTime,
+            isStopped: info.kp_proc.p_stat == SSTOP
+        )
+    }
+}
