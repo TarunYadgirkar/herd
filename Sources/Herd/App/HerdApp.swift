@@ -13,6 +13,7 @@ struct HerdApp: App {
             ContentView()
                 .environment(store)
                 .environment(actions)
+                .environment(\.historySamples, store.historySamples)
                 .frame(minWidth: 760, minHeight: 480)
                 .task { store.start() }
         }
@@ -23,6 +24,7 @@ struct HerdApp: App {
             MenuBarView()
                 .environment(store)
                 .environment(actions)
+                .environment(\.historySamples, store.historySamples)
                 .task { store.start() }
         } label: {
             MenuBarLabel(store: store)

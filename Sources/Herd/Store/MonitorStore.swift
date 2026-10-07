@@ -85,6 +85,10 @@ final class MonitorStore {
         return groups.first { $0.pids.contains(pid) }?.processes.first { $0.sample.pid == pid }?.sample.cpuPercent ?? 0
     }
 
+    var historySamples: Int {
+        min(Int(Series.window / interval.rawValue), Series.capacity)
+    }
+
     func group(id: String?) -> AppGroup? {
         guard let id else { return nil }
         return groups.first { $0.id == id }

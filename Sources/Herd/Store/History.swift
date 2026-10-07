@@ -1,7 +1,8 @@
 import Foundation
 
 struct Series: Sendable, Equatable {
-    static let capacity = 150
+    static let window: TimeInterval = 300
+    static let capacity = 300
 
     private(set) var values: [Double] = []
 

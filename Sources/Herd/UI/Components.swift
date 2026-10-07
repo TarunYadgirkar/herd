@@ -39,13 +39,21 @@ struct GroupIcon: View {
     }
 }
 
+extension EnvironmentValues {
+    @Entry var historySamples: Int = Series.capacity
+}
+
 struct Sparkline: View {
     let values: [Double]
     var color: Color = Theme.accent
     var ceiling: Double?
-    var capacity: Int = Series.capacity
+    var capacity: Int?
+
+    @Environment(\.historySamples) private var historySamples
 
     var body: some View {
+        let capacity = capacity ?? historySamples
+        let values = Array(values.suffix(capacity))
         Canvas { context, size in
             guard values.count > 1 else { return }
             let top = max(ceiling ?? 0, values.max() ?? 0, .leastNonzeroMagnitude)
