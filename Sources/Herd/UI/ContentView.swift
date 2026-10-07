@@ -108,9 +108,20 @@ struct ContentView: View {
     private var visibleRows: [TableRowItem] {
         let groups = store.groups.filter { scope.includes($0.kind) }
         let rows = TableRowBuilder.rows(for: groups, query: query)
-        let sorted = TableRowBuilder.sorted(rows, using: sortOrder)
+        let sorted = TableRowBuilder.sorted(rows, using: sortOrder, smoothed: smoothedValue)
         guard let order = hold.activeOrder else { return sorted }
         return TableRowBuilder.holding(sorted, order: order)
+    }
+
+    private static let smoothingSamples = 3
+
+    private var smoothedValue: ((TableRowItem) -> Double?)? {
+        guard let keyPath = sortOrder.first?.keyPath, let column = TableRowBuilder.metric(for: keyPath) else { return nil }
+        let history = store.groupHistory
+        return { row in
+            guard row.role == .group else { return nil }
+            return history[row.id]?.series(for: column).recentAverage(Self.smoothingSamples)
+        }
     }
 
     private func holdOrder() {

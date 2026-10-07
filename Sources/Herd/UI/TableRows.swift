@@ -1,6 +1,6 @@
 import Foundation
 
-struct TableRowItem: Identifiable, Sendable {
+struct TableRowItem: Identifiable, Sendable, Equatable {
     enum Role: Sendable { case group, cluster, process }
 
     let id: String
@@ -15,6 +15,37 @@ struct TableRowItem: Identifiable, Sendable {
     let isSuspended: Bool
     var isUnavailable = false
     var children: [TableRowItem]?
+
+    // Rows compare by what they display, so the table skips re-measuring the many idle rows whose numbers didn't visibly change.
+    static func == (lhs: TableRowItem, rhs: TableRowItem) -> Bool {
+        lhs.id == rhs.id && lhs.displayKey == rhs.displayKey && lhs.children?.map(\.id) == rhs.children?.map(\.id)
+    }
+
+    private struct DisplayKey: Equatable {
+        let title: String
+        let subtitle: String?
+        let count: Int
+        let flags: [Bool]
+        let values: [Int64]
+        let ports: [UInt16]
+        let isAwake: Bool
+    }
+
+    private var displayKey: DisplayKey {
+        let samples = process.map { [$0.sample] } ?? group.processes.map(\.sample)
+        return DisplayKey(
+            title: title,
+            subtitle: subtitle,
+            count: count,
+            flags: [isApproximate, isSuspended, isUnavailable],
+            values: [
+                Int64(metrics.cpu * 10), Int64(metrics.memory >> 20), Int64(metrics.energy * 100),
+                Int64(metrics.gpu * 10), Int64(metrics.network / 102.4), Int64(metrics.disk / 102.4), Int64(metrics.threads),
+            ],
+            ports: samples.flatMap(\.listeningPorts),
+            isAwake: samples.contains { !$0.sleepAssertions.isEmpty }
+        )
+    }
 
     var cpu: Double { metrics.cpu }
     var memory: Double { Double(metrics.memory) }
@@ -109,15 +140,18 @@ enum TableRowBuilder {
         return members.count == 1 ? members.first?.subtitle : nil
     }
 
-    static func sorted(_ rows: [TableRowItem], using comparators: [KeyPathComparator<TableRowItem>]) -> [TableRowItem] {
+    // Top-level rows rank by a short rolling average so momentary spikes don't reshuffle the table every tick.
+    static func sorted(_ rows: [TableRowItem], using comparators: [KeyPathComparator<TableRowItem>], smoothed: ((TableRowItem) -> Double?)? = nil) -> [TableRowItem] {
         guard let first = comparators.first else { return rows }
-        return sorted(rows, value: sortValue(for: first.keyPath), ascending: first.order == .forward)
+        let instant = sortValue(for: first.keyPath)
+        let topLevel: ((TableRowItem) -> Double)? = instant.map { value in { row in smoothed?(row) ?? value(row) } }
+        return sorted(rows, value: topLevel, childValue: instant, ascending: first.order == .forward)
     }
 
-    private static func sorted(_ rows: [TableRowItem], value: ((TableRowItem) -> Double)?, ascending: Bool) -> [TableRowItem] {
+    private static func sorted(_ rows: [TableRowItem], value: ((TableRowItem) -> Double)?, childValue: ((TableRowItem) -> Double)?, ascending: Bool) -> [TableRowItem] {
         let decorated = rows.map { row in
             var copy = row
-            copy.children = row.children.map { sorted($0, value: value, ascending: ascending) }
+            copy.children = row.children.map { sorted($0, value: childValue, childValue: childValue, ascending: ascending) }
             return (key: value?(row) ?? 0, title: row.title.lowercased(), row: copy)
         }
         return decorated.sorted { lhs, rhs in
@@ -125,6 +159,18 @@ enum TableRowBuilder {
             if value == nil && lhs.title != rhs.title { return ascending ? lhs.title < rhs.title : lhs.title > rhs.title }
             return lhs.title == rhs.title ? lhs.row.id < rhs.row.id : lhs.title < rhs.title
         }.map(\.row)
+    }
+
+    static func metric(for keyPath: PartialKeyPath<TableRowItem>) -> MetricColumn? {
+        switch keyPath {
+        case \TableRowItem.cpu: .cpu
+        case \TableRowItem.memory: .memory
+        case \TableRowItem.energy: .energy
+        case \TableRowItem.gpu: .gpu
+        case \TableRowItem.network: .network
+        case \TableRowItem.disk: .disk
+        default: nil
+        }
     }
 
     private static func sortValue(for keyPath: PartialKeyPath<TableRowItem>) -> ((TableRowItem) -> Double)? {

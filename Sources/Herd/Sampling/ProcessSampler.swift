@@ -41,6 +41,7 @@ final class ProcessSampler {
     private var ports: [ProcessKey: [UInt16]] = [:]
     private var tick = 0
     private static let portRefreshTicks = 5
+    private static let systemPrefixes = ["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/", "/Library/Apple/", "/usr/bin/", "/bin/"]
     private let currentUid = getuid()
     private var argumentBuffer = [UInt8](repeating: 0, count: ProcessIntrospection.argumentBufferSize())
 
@@ -171,7 +172,7 @@ final class ProcessSampler {
         let arguments = ProcessIntrospection.arguments(proc.pid, buffer: &argumentBuffer)
         let name = path.isEmpty ? (proc.pid == 0 ? "kernel_task" : proc.comm) : (path as NSString).lastPathComponent
         let isRuntime = Runtime.detect(executableName: name) != nil
-        let isUserTool = proc.uid == currentUid && !path.contains(".app/")
+        let isUserTool = proc.uid == currentUid && !path.isEmpty && !path.contains(".app/") && !Self.systemPrefixes.contains { path.hasPrefix($0) }
         return StaticInfo(
             id: "\(proc.pid)@\(Int64(proc.startTime.timeIntervalSince1970 * 1_000_000))",
             path: path,

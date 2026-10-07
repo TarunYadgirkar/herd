@@ -174,12 +174,12 @@ private struct NameCell: View {
             }
             Spacer(minLength: 4)
             ForEach(ports, id: \.self) { port in
-                Text(":\(port)")
+                Text(":" + String(port))
                     .font(.metricSmall)
                     .foregroundStyle(Theme.accent)
                     .padding(.horizontal, 5)
                     .background(Theme.accent.opacity(0.12), in: Capsule())
-                    .help("Listening on localhost:\(port)")
+                    .help("Listening on port " + String(port))
             }
             if !sleepReasons.isEmpty {
                 Image(systemName: "moon.zzz.fill")

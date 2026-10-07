@@ -1,15 +1,36 @@
 import AppKit
 import SwiftUI
 
+// Workspace icons carry 1024 px representations; drawing those at 18 pt on every update re-rasterizes them each time,
+// so each icon is rendered once at the size it's shown and reused.
 @MainActor
 enum IconProvider {
     private static let cache = NSCache<NSString, NSImage>()
+    private static let renderScale: CGFloat = 2
 
-    static func icon(for group: AppGroup) -> NSImage? {
+    static func icon(for group: AppGroup, size: CGFloat) -> NSImage? {
         guard let path = group.bundlePath else { return nil }
-        if let cached = cache.object(forKey: path as NSString) { return cached }
-        let image = NSWorkspace.shared.icon(forFile: path)
-        cache.setObject(image, forKey: path as NSString)
+        let key = "\(path)@\(Int(size))" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        let image = rendered(NSWorkspace.shared.icon(forFile: path), size: size)
+        cache.setObject(image, forKey: key)
+        return image
+    }
+
+    private static func rendered(_ source: NSImage, size: CGFloat) -> NSImage {
+        let pixels = Int(size * renderScale)
+        guard let bitmap = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return source }
+        bitmap.size = NSSize(width: size, height: size)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSGraphicsContext.current?.imageInterpolation = .high
+        source.draw(in: NSRect(x: 0, y: 0, width: size, height: size))
+        NSGraphicsContext.restoreGraphicsState()
+        let image = NSImage(size: bitmap.size)
+        image.addRepresentation(bitmap)
         return image
     }
 }
@@ -19,10 +40,8 @@ struct GroupIcon: View {
     var size: CGFloat = 18
 
     var body: some View {
-        if let image = IconProvider.icon(for: group) {
+        if let image = IconProvider.icon(for: group, size: size) {
             Image(nsImage: image)
-                .resizable()
-                .interpolation(.high)
                 .frame(width: size, height: size)
         } else {
             Image(systemName: fallbackSymbol)
