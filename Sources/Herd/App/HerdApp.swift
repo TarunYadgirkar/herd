@@ -11,14 +11,14 @@ struct HerdApp: App {
 
     var body: some Scene {
         Window("Herd", id: "main") {
-            ContentView()
+            RootView()
                 .environment(store)
                 .environment(actions)
                 .environment(\.historySamples, store.historySamples)
-                .frame(minWidth: 760, minHeight: 480)
+                .frame(minWidth: 960, minHeight: 540)
                 .task { store.start() }
         }
-        .defaultSize(width: 1080, height: 720)
+        .defaultSize(width: 1280, height: 780)
         .commands { HerdCommands(store: store) }
 
         MenuBarExtra(isInserted: $showMenuBarExtra) {

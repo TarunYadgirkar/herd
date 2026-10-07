@@ -55,15 +55,12 @@ struct ContentView: View {
                 isTree: isTree
             )
         }
-        .overlay(alignment: .bottom) { ToastView(message: actions.toast) }
-        .background(WindowVisibilityReader { store.setSurface("main", visible: $0) })
         .inspector(isPresented: $showInspector) {
             InspectorView(groupID: inspectedGroupID, processID: selectedProcessID)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 460)
         }
         .searchable(text: $query, placement: .toolbar, prompt: "Search apps, processes, PIDs")
         .toolbar { toolbar }
-        .actionConfirmation(actions)
         .navigationTitle("Herd")
         .navigationSubtitle(subtitle)
         .onChange(of: sortOrder) { _, _ in hold.release() }
@@ -165,23 +162,6 @@ struct ContentView: View {
         let apps = store.groups.filter { $0.kind == .apps }.count
         let paused = store.isPaused ? " · Paused" : ""
         return "\(apps) apps · \(store.processCount) processes · Herd uses \(Format.percent(store.ownCPU)) CPU\(paused)"
-    }
-}
-
-private struct ToastView: View {
-    let message: String?
-
-    var body: some View {
-        if let message {
-            Text(message)
-                .font(.callout)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(.regularMaterial, in: Capsule())
-                .shadow(color: Theme.shadow, radius: 8, y: 2)
-                .padding(.bottom, Theme.groupSpacing)
-                .transition(.opacity.combined(with: .offset(y: 6)))
-        }
     }
 }
 
