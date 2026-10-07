@@ -38,6 +38,7 @@ final class MonitorStore {
     private(set) var hasFirstFrame = false
     let archive = HistoryArchive()
     @ObservationIgnored let alerts = AlertMonitor()
+    @ObservationIgnored let dockGraph = DockTileGraph()
 
     var isPaused = false
     var requestedSelection: String?
@@ -161,6 +162,7 @@ final class MonitorStore {
             alerts.evaluate(frame)
         }
         latestFrame = frame
+        dockGraph.update(cpu: frame.system.cpuTotal)
         let nextHeadline = Headline(cpu: frame.system.cpuTotal, memoryUsed: frame.system.memoryUsed)
         if nextHeadline != headline { headline = nextHeadline }
         if !visibleSurfaces.isEmpty { publishDetail() }

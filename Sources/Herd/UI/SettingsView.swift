@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage("autoOpenInspector") private var autoOpenInspector = false
     @AppStorage("menuBarLabelStyle") private var menuBarLabelStyle: MenuBarLabelStyle = .cpuAndMemory
     @AppStorage(AlertSettings.enabledKey) private var alertsEnabled = true
+    @AppStorage(DockGraphSettings.enabledKey) private var dockGraph = false
     @AppStorage(AlertSettings.cpuThresholdKey) private var cpuThreshold = AlertSettings.defaultCPUThreshold
     @AppStorage(AlertSettings.cpuMinutesKey) private var cpuMinutes = AlertSettings.defaultCPUMinutes
 
@@ -20,6 +21,7 @@ struct SettingsView: View {
                     ForEach(UpdateInterval.allCases) { Text($0.title).tag($0) }
                 }
                 Toggle("Open details when you select an app", isOn: $autoOpenInspector)
+                Toggle("Show a live CPU graph in the Dock", isOn: $dockGraph)
             }
             Section("Menu bar") {
                 Toggle("Show Herd in the menu bar", isOn: $showMenuBarExtra)

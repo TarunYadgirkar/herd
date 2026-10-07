@@ -35,6 +35,7 @@ struct ContentView: View {
     @State private var hold = OrderHold()
     @State private var showInspector = false
     @AppStorage("scope") private var scope: Scope = .all
+    @AppStorage("treeView") private var isTree = false
 
     var body: some View {
         let rows = visibleRows
@@ -50,7 +51,8 @@ struct ContentView: View {
                 trendColumn: trendColumn,
                 actions: actions,
                 onOpen: { showInspector = true },
-                isSearching: !query.trimmingCharacters(in: .whitespaces).isEmpty
+                isSearching: !query.trimmingCharacters(in: .whitespaces).isEmpty,
+                isTree: isTree
             )
         }
         .overlay(alignment: .bottom) { ToastView(message: actions.toast) }
@@ -89,6 +91,12 @@ struct ContentView: View {
             .help("Filter by kind of process")
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            Toggle(isOn: $isTree) {
+                Label("Show as Tree", systemImage: "list.bullet.indent")
+            }
+            .keyboardShortcut("t", modifiers: .command)
+            .help(isTree ? "Group processes by app (⌘T)" : "Show which process started which (⌘T)")
+
             Button {
                 store.isPaused.toggle()
             } label: {
@@ -107,7 +115,7 @@ struct ContentView: View {
 
     private var visibleRows: [TableRowItem] {
         let groups = store.groups.filter { scope.includes($0.kind) }
-        let rows = TableRowBuilder.rows(for: groups, query: query)
+        let rows = isTree ? TreeRowBuilder.rows(for: groups, query: query) : TableRowBuilder.rows(for: groups, query: query)
         let sorted = TableRowBuilder.sorted(rows, using: sortOrder, smoothed: smoothedValue)
         guard let order = hold.activeOrder else { return sorted }
         return TableRowBuilder.holding(sorted, order: order)

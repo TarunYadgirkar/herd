@@ -12,90 +12,107 @@ struct ProcessTableView: View {
     let onOpen: () -> Void
 
     let isSearching: Bool
+    var isTree = false
 
     @AppStorage("processTableColumns") private var columnStorage = Data()
     @State private var columnCustomization = TableColumnCustomization<TableRowItem>()
     @State private var expanded: Set<String> = []
 
     var body: some View {
-        Table(of: TableRowItem.self, selection: $selection, sortOrder: $sortOrder, columnCustomization: $columnCustomization) {
-            TableColumn("Name", value: \.sortTitle) { row in
-                NameCell(row: row)
+        table
+            .tableStyle(.inset(alternatesRowBackgrounds: false))
+            .onContinuousHover { phase in
+                if case .active = phase { onPointerMove() }
             }
-            .width(min: 220, ideal: 300)
-            .customizationID("name")
-            .disabledCustomizationBehavior(.visibility)
-
-            metricColumn(.cpu, value: \.cpu)
-            metricColumn(.memory, value: \.memory)
-            metricColumn(.energy, value: \.energy)
-            metricColumn(.gpu, value: \.gpu)
-            metricColumn(.network, value: \.network)
-            metricColumn(.disk, value: \.disk)
-
-            TableColumn("Threads", value: \.threads) { row in
-                Text(row.threads > 0 ? "\(row.threads)" : "–")
-                    .font(.metric)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .accessibilityLabel(row.threads > 0 ? "\(row.threads) threads" : "Not available")
+            .contextMenu(forSelectionType: TableRowItem.ID.self) { ids in
+                RowMenu(rows: resolve(ids), actions: actions)
+            } primaryAction: { ids in
+                guard !ids.isEmpty else { return }
+                onOpen()
             }
-            .width(min: 56, ideal: 64)
-            .customizationID("threads")
-            .defaultVisibility(.hidden)
-
-            TableColumn("PID") { row in
-                Text(row.pid.map(String.init) ?? "")
-                    .font(.metric)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+            .onAppear(perform: restoreColumns)
+            .onChange(of: columnCustomization) { _, customization in
+                columnStorage = (try? JSONEncoder().encode(customization)) ?? Data()
             }
-            .width(min: 52, ideal: 60)
-            .customizationID("pid")
-            .defaultVisibility(.hidden)
+    }
 
-            TableColumn("Last 5 min") { row in
-                TrendCell(row: row, history: history, column: trendColumn)
+    @ViewBuilder
+    private var table: some View {
+        if isTree {
+            Table(rows, children: \.children, selection: $selection, sortOrder: $sortOrder, columnCustomization: $columnCustomization) {
+                columns
             }
-            .width(min: 80, ideal: 110)
-            .customizationID("trend")
-        } rows: {
-            ForEach(rows) { row in
-                if let children = row.children {
-                    DisclosureTableRow(row, isExpanded: expansion(row.id)) {
-                        if isOpen(row.id) {
-                            ForEach(children) { child in
-                                if let grandchildren = child.children {
-                                    DisclosureTableRow(child, isExpanded: expansion(child.id)) {
-                                        if isOpen(child.id) {
-                                            ForEach(grandchildren) { TableRow($0) }
+        } else {
+            Table(of: TableRowItem.self, selection: $selection, sortOrder: $sortOrder, columnCustomization: $columnCustomization) {
+                columns
+            } rows: {
+                ForEach(rows) { row in
+                    if let children = row.children {
+                        DisclosureTableRow(row, isExpanded: expansion(row.id)) {
+                            if isOpen(row.id) {
+                                ForEach(children) { child in
+                                    if let grandchildren = child.children {
+                                        DisclosureTableRow(child, isExpanded: expansion(child.id)) {
+                                            if isOpen(child.id) {
+                                                ForEach(grandchildren) { TableRow($0) }
+                                            }
                                         }
+                                    } else {
+                                        TableRow(child)
                                     }
-                                } else {
-                                    TableRow(child)
                                 }
                             }
                         }
+                    } else {
+                        TableRow(row)
                     }
-                } else {
-                    TableRow(row)
                 }
             }
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: false))
-        .onContinuousHover { phase in
-            if case .active = phase { onPointerMove() }
+    }
+
+    @TableColumnBuilder<TableRowItem, KeyPathComparator<TableRowItem>>
+    private var columns: some TableColumnContent<TableRowItem, KeyPathComparator<TableRowItem>> {
+        TableColumn("Name", value: \.sortTitle) { row in
+            NameCell(row: row)
         }
-        .contextMenu(forSelectionType: TableRowItem.ID.self) { ids in
-            RowMenu(rows: resolve(ids), actions: actions)
-        } primaryAction: { ids in
-            guard !ids.isEmpty else { return }
-            onOpen()
+        .width(min: 220, ideal: 300)
+        .customizationID("name")
+        .disabledCustomizationBehavior(.visibility)
+
+        metricColumn(.cpu, value: \.cpu)
+        metricColumn(.memory, value: \.memory)
+        metricColumn(.energy, value: \.energy)
+        metricColumn(.gpu, value: \.gpu)
+        metricColumn(.network, value: \.network)
+        metricColumn(.disk, value: \.disk)
+
+        TableColumn("Threads", value: \.threads) { row in
+            Text(row.threads > 0 ? "\(row.threads)" : "–")
+                .font(.metric)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilityLabel(row.threads > 0 ? "\(row.threads) threads" : "Not available")
         }
-        .onAppear(perform: restoreColumns)
-        .onChange(of: columnCustomization) { _, customization in
-            columnStorage = (try? JSONEncoder().encode(customization)) ?? Data()
+        .width(min: 56, ideal: 64)
+        .customizationID("threads")
+        .defaultVisibility(.hidden)
+
+        TableColumn("PID") { row in
+            Text(row.pid.map(String.init) ?? "")
+                .font(.metric)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .width(min: 52, ideal: 60)
+        .customizationID("pid")
+        .defaultVisibility(.hidden)
+
+        TableColumn("Last 5 min") { row in
+            TrendCell(row: row, history: history, column: trendColumn)
+        }
+        .width(min: 80, ideal: 110)
+        .customizationID("trend")
     }
 
     // SceneStorage only survives with window restoration on, which macOS turns off by default, so column choices live in user defaults.

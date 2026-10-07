@@ -42,6 +42,17 @@ struct HerdApp: App {
         .restorationBehavior(.disabled)
         .commandsRemoved()
 
+        Window("Herd Mini", id: "mini") {
+            MiniMonitorView()
+                .environment(store)
+                .environment(\.historySamples, store.historySamples)
+        }
+        .windowLevel(.floating)
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.topTrailing)
+        .restorationBehavior(.disabled)
+
         Settings {
             SettingsView()
                 .environment(store)
@@ -96,9 +107,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
 struct HerdCommands: Commands {
     let store: MonitorStore
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(after: .toolbar) {
+            Button("Show Floating Window") { openWindow(id: "mini") }
+                .keyboardShortcut("f", modifiers: [.command, .option])
             Button(store.isPaused ? "Resume Updates" : "Pause Updates") { store.isPaused.toggle() }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
             Button("Refresh Now") { store.refreshNow() }
