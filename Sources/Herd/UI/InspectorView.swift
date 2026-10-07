@@ -452,6 +452,8 @@ private struct ProcessContextMenu: View {
     let groupName: String
     let actions: ActionController
 
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         Group {
             item(.quit, title: "Quit Process")
@@ -463,6 +465,7 @@ private struct ProcessContextMenu: View {
             }
         }
         Divider()
+        Button("Get Info", systemImage: "info.circle") { openWindow(id: "process-info", value: sample.id) }
         Button("Copy PID", systemImage: "number") { copy(String(sample.pid)) }
         Button("Copy Command Line", systemImage: "terminal") { copy(sample.commandLine) }
     }

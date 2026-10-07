@@ -48,6 +48,8 @@ struct SensorReading: Sendable, Equatable {
     var gpuCelsius: Double?
     var ssdCelsius: Double?
     var batteryCelsius: Double?
+    var systemWatts: Double?
+    var adapterInWatts: Double?
     var fans: [FanReading] = []
     var temperatures: [TemperatureReading] = []
 }

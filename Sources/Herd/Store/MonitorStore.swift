@@ -37,6 +37,7 @@ final class MonitorStore {
     private(set) var processCount = 0
     private(set) var hasFirstFrame = false
     let archive = HistoryArchive()
+    @ObservationIgnored let alerts = AlertMonitor()
 
     var isPaused = false
     var requestedSelection: String?
@@ -157,6 +158,7 @@ final class MonitorStore {
             recordHistory(frame)
             archive.record(frame.system, groups: frame.groups, interval: interval.rawValue, at: frame.date)
             saveHistoryIfDue(at: frame.date)
+            alerts.evaluate(frame)
         }
         latestFrame = frame
         let nextHeadline = Headline(cpu: frame.system.cpuTotal, memoryUsed: frame.system.memoryUsed)

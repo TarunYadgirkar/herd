@@ -261,6 +261,8 @@ private struct RowMenu: View {
     let rows: [TableRowItem]
     let actions: ActionController
 
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         if let row = rows.first {
             let group = row.group
@@ -285,10 +287,19 @@ private struct RowMenu: View {
                 }
             }
             Divider()
+            if let target = infoTarget(row) {
+                Button("Get Info", systemImage: "info.circle") { openWindow(id: "process-info", value: target.id) }
+            }
             Button("Show in Finder", systemImage: "folder") { ProcessActions.revealInFinder(group) }
             Button("Copy Details", systemImage: "doc.on.doc") { copy(row) }
             Button("Search the Web for \(row.title)", systemImage: "magnifyingglass") { searchOnline(row.title) }
         }
+    }
+
+    private func infoTarget(_ row: TableRowItem) -> ProcessSample? {
+        if let process = row.process { return process.sample }
+        let members = row.group.processes
+        return (members.first { $0.sample.pid == row.group.mainPid } ?? members.first)?.sample
     }
 
     private func groupButton(_ action: ProcessAction, title: String, _ group: AppGroup) -> some View {

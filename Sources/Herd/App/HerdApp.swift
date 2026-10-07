@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 @main
 struct HerdApp: App {
@@ -31,6 +32,16 @@ struct HerdApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        WindowGroup("Process Info", id: "process-info", for: String.self) { $processID in
+            ProcessInfoView(processID: processID)
+                .environment(store)
+                .environment(actions)
+                .environment(\.historySamples, store.historySamples)
+        }
+        .defaultSize(width: 560, height: 640)
+        .restorationBehavior(.disabled)
+        .commandsRemoved()
+
         Settings {
             SettingsView()
                 .environment(store)
@@ -38,16 +49,44 @@ struct HerdApp: App {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     @MainActor static let store = MonitorStore()
 
     // Sampling has to start even when no window opens at launch, because the menu bar label needs live numbers.
     func applicationDidFinishLaunching(_ notification: Notification) {
-        MainActor.assumeIsolated { Self.store.start() }
+        UNUserNotificationCenter.current().delegate = self
+        MainActor.assumeIsolated {
+            Self.store.start()
+            Self.store.alerts.requestAuthorization()
+        }
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let action = response.actionIdentifier
+        guard let groupID = response.notification.request.content.userInfo[AlertAction.groupKey] as? String else { return }
+        await MainActor.run {
+            switch action {
+            case AlertAction.quit:
+                guard let group = Self.store.liveGroup(id: groupID) else { return }
+                _ = ProcessActions.perform(.quit, on: group)
+            case AlertAction.ignore:
+                AlertSettings.ignore(groupID)
+            default:
+                Self.store.requestedSelection = groupID
+                NSApp.activate()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { Self.store.stop() }
+        MainActor.assumeIsolated {
+            Self.store.stop()
+            Self.store.saveHistory()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
