@@ -13,7 +13,7 @@ struct ReportedUsage: Sendable {
 // Root and other-user processes hide their counters from Herd, but /usr/bin/top holds com.apple.system-task-ports.read.
 // One long-lived top is far cheaper than spawning a reader per tick, and its MEM column is phys_footprint like Activity Monitor's.
 final class TopStream: @unchecked Sendable {
-    private struct Row {
+    struct Row: Equatable {
         let pid: pid_t
         let cpuPercent: Double
         let threads: Int
@@ -241,7 +241,7 @@ final class TopStream: @unchecked Sendable {
         )
     }
 
-    private static func parseRow(_ line: String) -> Row? {
+    static func parseRow(_ line: String) -> Row? {
         var fields = line.split(separator: " ", omittingEmptySubsequences: true)
         if let hours = fields.firstIndex(of: hoursSuffix), hours > 0 {
             fields[hours - 1] = Substring(fields[hours - 1] + ":00:00")

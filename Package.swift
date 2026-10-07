@@ -10,5 +10,10 @@ let package = Package(
             path: "Sources/Herd",
             linkerSettings: [.linkedFramework("IOKit")]
         ),
+        .testTarget(
+            name: "HerdTests",
+            dependencies: ["Herd"],
+            path: "Tests/HerdTests"
+        ),
     ]
 )

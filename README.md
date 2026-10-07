@@ -13,6 +13,7 @@ Runs unprivileged: no root helper, no sandbox.
 
 ```bash
 swift build                      # debug build
+swift test                       # parser and grouping tests
 ./scripts/build-app.sh           # release build packaged as build/Herd.app
 ./scripts/build-app.sh --install # also copies it to /Applications
 ```
@@ -26,5 +27,6 @@ swift build                      # debug build
 | `Sources/Herd/Store` | Sampling engine actor, observable store, history archive, alerts |
 | `Sources/Herd/UI` | SwiftUI views; `UI/Performance` holds the graph pages |
 | `Sources/Herd/Actions` | Quit, force quit, pause, efficiency mode, sample |
+| `Tests/HerdTests` | Fixture tests for the `top` row parser, bundle detection, and script labeling |
 
 Design tokens (colors, fonts, spacing) live in `Sources/Herd/UI/Theme.swift`. Use them instead of raw values.
