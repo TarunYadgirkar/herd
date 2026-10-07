@@ -24,12 +24,11 @@ struct CPUPerformanceView: View {
             context: context,
             yDomain: 0...1
         )
-        CoreGrid(usage: system.perCoreUsage, history: cores, readings: system.power?.clusters)
+        CoreGrid(usage: system.perCoreUsage, history: cores, readings: system.power?.clusters, temperatures: system.sensors?.temperatures ?? [])
     }
 
     private var stats: [PerformanceStat] {
         var stats = [
-            PerformanceStat(label: "Cores", value: "\(system.perCoreUsage.count)"),
             PerformanceStat(label: "Load", value: PerformanceFormat.load(system.loadAverage), help: "1, 5, 15 min"),
         ]
         if let kernel = system.kernelCPUPercent {

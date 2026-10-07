@@ -19,6 +19,7 @@ struct SensorsPerformanceView: View {
                 series: [
                     ChartSeries(name: "CPU", color: ChartPalette.cpuTemperature, values: context.values { $0.cpuCelsius }, fill: .none, lineWidth: 2),
                     ChartSeries(name: "GPU", color: ChartPalette.gpuTemperature, values: context.values { $0.gpuCelsius }, fill: .none, lineWidth: 2),
+                    ChartSeries(name: "Lid", color: ChartPalette.lidTemperature, values: context.values { $0.lidCelsius }, fill: .none, lineWidth: 2),
                 ],
                 unit: .celsius,
                 context: context,
@@ -43,6 +44,8 @@ struct SensorsPerformanceView: View {
         let readings: [(String, Double?)] = [
             ("CPU max", sensors.cpuMaxCelsius),
             ("GPU", sensors.gpuCelsius),
+            ("Lid", sensors.lidCelsius),
+            ("Palm rest", sensors.palmRestCelsius),
             ("SSD", sensors.ssdCelsius),
             ("Battery", sensors.batteryCelsius),
         ]
@@ -80,71 +83,162 @@ struct ThermalBadge: View {
     }
 }
 
+// Chips run hot by design; skin and storage feel or throttle at much lower temperatures.
 enum HeatScale {
-    static let warmCelsius = 70.0
-    static let hotCelsius = 90.0
-
-    static func color(for celsius: Double) -> Color? {
-        if celsius >= hotCelsius { return Theme.hot }
-        if celsius >= warmCelsius { return Theme.warm }
+    static func color(for celsius: Double, zone: SensorZone) -> Color? {
+        let limits = thresholds(zone)
+        if celsius >= limits.hot { return Theme.hot }
+        if celsius >= limits.warm { return Theme.warm }
         return nil
     }
-}
 
-private struct SensorGroup: Identifiable {
-    let name: String
-    let readings: [TemperatureReading]
-
-    var id: String { name }
+    private static func thresholds(_ zone: SensorZone) -> (warm: Double, hot: Double) {
+        switch zone {
+        case .surface: (38, 45)
+        case .inside, .storage: (60, 75)
+        case .memory: (75, 90)
+        case .superCores, .performanceCores, .cpu, .gpu: (70, 90)
+        }
+    }
 }
 
 private struct SensorListCard: View {
     let sensors: SensorReading
 
-    private static let columnWidth: CGFloat = 220
-
     var body: some View {
-        PerformanceCard(title: "All sensors") {
+        PerformanceCard(title: "Sensors") {
             if sensors.temperatures.isEmpty {
                 ChartMessage(text: PerformanceCopy.unavailable, height: 60)
             } else {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: Self.columnWidth), spacing: Theme.groupSpacing, alignment: .topLeading)],
-                    alignment: .leading,
-                    spacing: Theme.groupSpacing
-                ) {
-                    ForEach(groups) { SensorGroupView(group: $0) }
+                VStack(alignment: .leading, spacing: Theme.groupSpacing) {
+                    ForEach(zones, id: \.self) { zone in
+                        ZoneRow(zone: zone, readings: sensors.temperatures.filter { $0.zone == zone })
+                    }
                 }
             }
         }
     }
 
-    private var groups: [SensorGroup] {
-        Dictionary(grouping: sensors.temperatures) { $0.name.split(separator: " ").first.map(String.init) ?? $0.name }
-            .map { SensorGroup(name: $0.key, readings: $0.value.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    private var zones: [SensorZone] {
+        Set(sensors.temperatures.map(\.zone)).sorted()
     }
 }
 
-private struct SensorGroupView: View {
-    let group: SensorGroup
+private struct ZoneRow: View {
+    let zone: SensorZone
+    let readings: [TemperatureReading]
+
+    private static let titleWidth: CGFloat = 110
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(group.name)
-                .font(.subheadline.weight(.semibold))
-            ForEach(group.readings) { reading in
+        HStack(alignment: .top, spacing: Theme.groupSpacing) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold))
+                if let hottest {
+                    Text(PerformanceFormat.celsius(hottest))
+                        .font(.displaySmall)
+                        .foregroundStyle(HeatScale.color(for: hottest, zone: zone) ?? .primary)
+                }
+            }
+            .frame(width: Self.titleWidth, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            if zone == .surface || zone == .inside {
+                NamedReadings(readings: readings, zone: zone)
+            } else if readings.count > HeatStrip.threshold {
+                HeatStrip(readings: readings, zone: zone)
+            } else {
+                HeatCells(readings: readings, zone: zone)
+            }
+        }
+    }
+
+    private var hottest: Double? { readings.map(\.celsius).max() }
+
+    private var title: String {
+        switch zone {
+        case .superCores: "Super"
+        case .performanceCores: "Performance"
+        case .cpu: "CPU"
+        case .gpu: "GPU"
+        case .memory: "Memory"
+        case .storage: "Storage"
+        case .surface: "Surface"
+        case .inside: "Inside"
+        }
+    }
+}
+
+private struct HeatCells: View {
+    let readings: [TemperatureReading]
+    let zone: SensorZone
+
+    private static let cellWidth: CGFloat = 44
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.cellWidth), spacing: 4)], alignment: .leading, spacing: 4) {
+            ForEach(readings) { reading in
+                let tint = HeatScale.color(for: reading.celsius, zone: zone)
+                Text(String(format: "%.0f°", reading.celsius))
+                    .font(.metricSmall)
+                    .foregroundStyle(tint ?? .primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                    .background((tint ?? Color.secondary).opacity(tint == nil ? 0.10 : 0.18), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .help(reading.key)
+                    .accessibilityLabel("\(reading.name), \(PerformanceFormat.celsius(reading.celsius))")
+            }
+        }
+    }
+}
+
+private struct HeatStrip: View {
+    let readings: [TemperatureReading]
+    let zone: SensorZone
+
+    static let threshold = 16
+    private static let height: CGFloat = 22
+
+    var body: some View {
+        let low = readings.map(\.celsius).min() ?? 0
+        HStack(spacing: 2) {
+            ForEach(readings) { reading in
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(HeatScale.color(for: reading.celsius, zone: zone) ?? Theme.accent)
+                    .opacity(0.35 + 0.65 * relative(reading.celsius, low: low))
+                    .help("\(reading.key) \(PerformanceFormat.celsius(reading.celsius))")
+            }
+        }
+        .frame(height: Self.height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(readings.count) sensors, \(PerformanceFormat.celsius(low)) to \(PerformanceFormat.celsius(readings.map(\.celsius).max() ?? low))")
+    }
+
+    private func relative(_ celsius: Double, low: Double) -> Double {
+        let high = readings.map(\.celsius).max() ?? low
+        return high > low ? (celsius - low) / (high - low) : 1
+    }
+}
+
+private struct NamedReadings: View {
+    let readings: [TemperatureReading]
+    let zone: SensorZone
+
+    private static let columnWidth: CGFloat = 170
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.columnWidth), spacing: Theme.groupSpacing)], alignment: .leading, spacing: 6) {
+            ForEach(readings) { reading in
                 HStack(spacing: Theme.itemSpacing) {
                     Text(reading.name)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .truncationMode(.middle)
                     Spacer(minLength: Theme.itemSpacing)
                     Text(PerformanceFormat.celsius(reading.celsius))
                         .font(.metric)
-                        .foregroundStyle(HeatScale.color(for: reading.celsius) ?? .primary)
+                        .foregroundStyle(HeatScale.color(for: reading.celsius, zone: zone) ?? .primary)
                 }
+                .help(reading.key)
                 .accessibilityElement(children: .combine)
             }
         }

@@ -29,6 +29,7 @@ enum ChartPalette {
 
     static let cpuTemperature = tertiary
     static let gpuTemperature = secondary
+    static let lidTemperature = Theme.hot
     static let fan = quaternary
 
     static let charge = primary

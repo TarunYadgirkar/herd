@@ -60,7 +60,7 @@ struct PointAccumulator {
     ]
     nonisolated(unsafe) private static let optionalFields: [WritableKeyPath<SystemPoint, Double?>] = [
         \.cpuWatts, \.gpuWatts, \.aneWatts, \.dramWatts, \.systemWatts,
-        \.cpuCelsius, \.gpuCelsius, \.fanRPM, \.batteryPercent, \.batteryWatts,
+        \.cpuCelsius, \.gpuCelsius, \.lidCelsius, \.fanRPM, \.batteryPercent, \.batteryWatts,
     ]
 
     private(set) var count = 0
@@ -191,6 +191,7 @@ extension SystemPoint {
             systemWatts: power?.systemWatts,
             cpuCelsius: sensors?.cpuCelsius,
             gpuCelsius: sensors?.gpuCelsius,
+            lidCelsius: sensors?.lidCelsius,
             fanRPM: sensors?.fans.map(\.rpm).max(),
             batteryPercent: snapshot.batteryDetails?.percent ?? snapshot.battery?.percent,
             batteryWatts: snapshot.batteryDetails?.watts
