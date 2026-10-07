@@ -9,7 +9,6 @@ enum ProcessTools {
 
     private static let sampleTool = "/usr/bin/sample"
     private static let sampleSeconds = 3
-    private static let lowerNice: Int32 = 10
 
     static func sample(pid: pid_t, name: String) async -> SampleResult {
         let report = reportURL(pid: pid, name: name)
@@ -62,12 +61,11 @@ enum ProcessTools {
                 ? "Herd moved \(name) to the efficiency cores. It keeps running, just slower and cooler."
                 : "\(name) is back to normal priority."
         }
-        let failure = errno
-        if failure == ESRCH { return "\(name) has already exited." }
-        if failure == EPERM { return "macOS doesn't let Herd change the priority of \(name), because it belongs to another user or the system." }
-        guard isOn, setpriority(PRIO_PROCESS, id_t(pid), lowerNice) == 0 else {
-            return "Herd couldn't change the priority of \(name)."
+        // No nice fallback: an unprivileged user can't raise nice back, so the toggle couldn't undo it.
+        switch errno {
+        case ESRCH: return "\(name) has already exited."
+        case EPERM: return "macOS doesn't let Herd change the priority of \(name), because it belongs to another user or the system."
+        default: return "Herd couldn't change the priority of \(name)."
         }
-        return "Herd lowered the priority of \(name). macOS only lets an administrator raise it again, so it stays lower until \(name) restarts."
     }
 }

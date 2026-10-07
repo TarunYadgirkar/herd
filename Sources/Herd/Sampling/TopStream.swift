@@ -29,7 +29,7 @@ final class TopStream: @unchecked Sendable {
     private static let columnCount = 7
     private static let restartInterval: TimeInterval = 10
     private static let minimumBackoff: TimeInterval = 1
-    private static let staleIntervals = 3.0
+    private static let staleIntervals = 2.0
     private static let nanosPerSecond = 1_000_000_000.0
     private static let newline = UInt8(ascii: "\n")
     private static let blockHeader = "Processes:"
@@ -85,13 +85,11 @@ final class TopStream: @unchecked Sendable {
         }
     }
 
-    // After a pause, the last reading stays on screen until top's next sample arrives instead of flashing empty rows.
-    private static let maxStaleSeconds: Double = 300
-
     func usage() -> [pid_t: ReportedUsage] {
         lock.withLock {
             let age = Double(DispatchTime.now().uptimeNanoseconds &- publishedAt) / Self.nanosPerSecond
-            guard publishedAt > 0, age <= Self.maxStaleSeconds || (isRunning && age <= interval * Self.staleIntervals) else { return [:] }
+            // An old reading would look current in the table, history and alerts, so anything past its window is dropped.
+            guard publishedAt > 0, isRunning, age <= interval * Self.staleIntervals else { return [:] }
             return published
         }
     }

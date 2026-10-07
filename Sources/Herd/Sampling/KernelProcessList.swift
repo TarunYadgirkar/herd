@@ -13,6 +13,14 @@ struct KernelProcess {
 enum KernelProcessList {
     private static let fetchAttempts = 4
 
+    static func process(_ pid: pid_t) -> KernelProcess? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0) == 0, size > 0 else { return nil }
+        return makeProcess(info)
+    }
+
     static func all() -> [KernelProcess] {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
         for _ in 0..<fetchAttempts {

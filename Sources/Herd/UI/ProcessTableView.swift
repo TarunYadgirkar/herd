@@ -151,7 +151,7 @@ struct ProcessTableView: View {
                 HeatValue(column: column, value: row[keyPath: value])
             }
         }
-        .width(min: 64, ideal: column == .network || column == .disk || column == .impact ? 84 : 72)
+        .width(min: 64, ideal: column == .network || column == .disk || column == .impact || column == .energy ? 84 : 72)
         .customizationID(column.rawValue)
         .defaultVisibility(column == .disk ? .hidden : .automatic)
     }

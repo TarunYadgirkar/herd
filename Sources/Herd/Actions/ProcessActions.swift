@@ -88,6 +88,7 @@ enum ProcessActions {
 
     static func canAct(on group: AppGroup, action: ProcessAction = .quit) -> Bool {
         if action == .suspend && group.kind == .system { return false }
+        if action != .resume && !group.isSafeQuitTarget { return false }
         return group.processes.contains { !isProtected($0.sample, for: action) }
     }
 
@@ -116,6 +117,7 @@ enum ProcessActions {
                 protected.insert(sample.name)
             } else if kill(sample.pid, action.signal) == 0 {
                 succeeded += 1
+                action == .suspend ? PauseLedger.record(sample) : PauseLedger.forget(sample)
             } else if errno == EPERM {
                 denied.insert(sample.name)
             } else {

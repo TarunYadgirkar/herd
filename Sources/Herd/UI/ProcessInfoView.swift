@@ -314,7 +314,7 @@ private struct LiveStats: View {
                 HStack(spacing: Theme.itemSpacing) {
                     StatTile(title: "CPU", value: live.isUnavailable ? nil : prefix(live) + Format.percent(live.cpuPercent))
                     StatTile(title: "Memory", value: live.isUnavailable ? nil : prefix(live) + Format.bytes(live.memoryBytes))
-                    StatTile(title: "Power", value: live.isApproximate ? nil : Format.watts(live.energyWatts))
+                    StatTile(title: "CPU Power", value: live.isApproximate ? nil : Format.watts(live.energyWatts))
                     StatTile(title: "Threads", value: live.threads > 0 ? String(live.threads) : nil)
                 }
             }

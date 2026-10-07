@@ -81,8 +81,11 @@ struct AppGroup: Sendable, Identifiable {
     let mainPid: pid_t?
     let processes: [GroupedProcess]
     let metrics: Metrics
+    let project: String?
 
     var pids: [pid_t] { processes.map(\.sample.pid) }
+    // Quitting a whole group is only safe when it's one app or one project; a runtime catch-all mixes unrelated work.
+    var isSafeQuitTarget: Bool { bundlePath != nil || project != nil || processes.count == 1 }
     // Root-owned members can't be paused by Herd, so only the user's own processes decide whether the group reads as paused.
     var isSuspended: Bool {
         let own = processes.filter { $0.sample.uid == getuid() }

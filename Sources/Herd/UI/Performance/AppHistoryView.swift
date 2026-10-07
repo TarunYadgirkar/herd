@@ -42,7 +42,7 @@ private struct AppUsageTable: View {
         Table(rows, sortOrder: $sortOrder) {
             TableColumn("App", value: \.name) { UsageAppLabel(usage: $0) }
                 .width(min: 180, ideal: 240)
-            TableColumn("Energy", value: \.energyWattHours) { number(PerformanceFormat.wattHours($0.energyWattHours)) }
+            TableColumn("CPU Energy", value: \.energyWattHours) { number(PerformanceFormat.wattHours($0.energyWattHours)) }
                 .width(min: Self.numberWidth)
             TableColumn("CPU time", value: \.cpuSeconds) { number(PerformanceFormat.cpuTime($0.cpuSeconds)) }
                 .width(min: Self.numberWidth)

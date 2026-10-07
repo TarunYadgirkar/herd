@@ -44,11 +44,19 @@ struct PendingAction: Identifiable {
         }
     }
 
+    // Only regular apps receive a real Quit command; everything else gets SIGTERM, which programs may handle or not.
+    private var quitsLikeAnApp: Bool {
+        guard case .group(let group) = target else { return false }
+        return group.kind == .apps
+    }
+
     var message: String {
         switch action {
         case .forceQuit: "Unsaved changes in \(name) will be lost."
-        case .quit: "\(name) will close the way it does when you quit it normally."
-        case .suspend: "\(name) will freeze and stop using CPU until you resume it. Its windows won't respond while paused."
+        case .quit: quitsLikeAnApp
+            ? "\(name) will quit the way it does from its own Quit command."
+            : "Herd will ask \(name) to exit. Programs that ignore the request keep running; ones that don't handle it stop without saving."
+        case .suspend: "\(name) will freeze until you resume it. Herd resumes it automatically if Herd quits."
         case .resume: "\(name) will continue where it left off."
         }
     }
@@ -70,7 +78,7 @@ final class ActionController {
 
     func request(_ action: ProcessAction, on group: AppGroup) {
         guard ProcessActions.canAct(on: group, action: action) else {
-            show("\(group.name) keeps macOS running, so Herd won't \(action.title.lowercased()) it.")
+            show(Self.refusal(action, group))
             return
         }
         ask(PendingAction(action: action, group: group))
@@ -90,8 +98,19 @@ final class ActionController {
         run(pending)
     }
 
+    static func refusal(_ action: ProcessAction, _ group: AppGroup) -> String {
+        guard group.isSafeQuitTarget else {
+            return "\(group.name) holds \(group.processes.count) separate processes. Expand it and choose the one to \(action.title.lowercased())."
+        }
+        return "\(group.name) keeps macOS running, so Herd won't \(action.title.lowercased()) it."
+    }
+
     // The menu bar asks through its own alert, so it calls this directly once the user has agreed.
     func runConfirmed(_ action: ProcessAction, on group: AppGroup) {
+        guard ProcessActions.canAct(on: group, action: action) else {
+            show(Self.refusal(action, group))
+            return
+        }
         run(PendingAction(action: action, group: group))
     }
 
@@ -120,6 +139,10 @@ final class ActionController {
         case .group(let snapshot):
             guard let current = store.liveGroup(id: snapshot.id) else {
                 show("\(snapshot.name) has already quit.")
+                return
+            }
+            guard ProcessActions.canAct(on: current, action: pending.action) else {
+                show(Self.refusal(pending.action, current))
                 return
             }
             show(ProcessActions.perform(pending.action, on: current).message(for: pending.action, name: current.name))

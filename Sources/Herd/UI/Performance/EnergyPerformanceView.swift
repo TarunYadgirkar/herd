@@ -73,7 +73,7 @@ private struct EnergyTodayCard: View {
         Grid(alignment: .leading, horizontalSpacing: Theme.groupSpacing, verticalSpacing: Theme.itemSpacing) {
             GridRow {
                 Text("App")
-                numberHeader("Energy")
+                numberHeader("CPU Energy")
                 numberHeader("CPU time")
                 numberHeader("Network")
                 numberHeader("Disk")
