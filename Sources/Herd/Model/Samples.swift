@@ -23,6 +23,9 @@ struct ProcessSample: Sendable, Identifiable, Hashable {
     var isApproximate: Bool
     var isSuspended: Bool
     var isUnavailable: Bool = false
+    var energyImpact: Double = 0
+    var idleWakeups: Double = 0
+    var cpuSeconds: Double = 0
     var workingDirectory: String? = nil
     var listeningPorts: [UInt16] = []
     var sleepAssertions: [String] = []
@@ -65,6 +68,10 @@ struct SystemSnapshot: Sendable {
     var gpuUtilization: Double?
     var thermal: ProcessInfo.ThermalState = .nominal
     var battery: BatteryInfo?
+    var batteryDetails: BatteryDetails?
+    var power: PowerReading?
+    var sensors: SensorReading?
+    var kernelCPUPercent: Double?
     var uptime: TimeInterval = 0
 
     var cpuTotal: Double { cpuUser + cpuSystem }

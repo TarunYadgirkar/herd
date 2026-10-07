@@ -22,6 +22,7 @@ enum UpdateInterval: Double, CaseIterable, Identifiable {
 final class MonitorStore {
     static let intervalKey = "updateInterval"
     private static let warmUpDelay = Duration.milliseconds(700)
+    private static let historySaveInterval: TimeInterval = 300
 
     struct Headline: Equatable {
         var cpu: Double = 0
@@ -35,6 +36,7 @@ final class MonitorStore {
     private(set) var groupHistory: [String: GroupHistory] = [:]
     private(set) var processCount = 0
     private(set) var hasFirstFrame = false
+    let archive = HistoryArchive()
 
     var isPaused = false
     var requestedSelection: String?
@@ -50,6 +52,7 @@ final class MonitorStore {
     @ObservationIgnored private var latestGroupHistory: [String: GroupHistory] = [:]
     @ObservationIgnored private var latestSystemHistory = SystemHistory()
     @ObservationIgnored private var workspaceObservers: [NSObjectProtocol] = []
+    @ObservationIgnored private var lastHistorySave = Date()
 
     init() {
         let saved = UserDefaults.standard.double(forKey: Self.intervalKey)
@@ -74,6 +77,10 @@ final class MonitorStore {
         loop?.cancel()
         loop = nil
         Task { await engine.stop() }
+    }
+
+    func saveHistory() {
+        archive.save(waitUntilWritten: true)
     }
 
     func refreshNow() {
@@ -146,12 +153,22 @@ final class MonitorStore {
 
     // Forced frames cover a shorter window than the update interval, so they'd skew the evenly spaced history.
     private func apply(_ frame: Frame, recordsHistory: Bool) {
-        if hasFirstFrame && recordsHistory { recordHistory(frame) }
+        if hasFirstFrame && recordsHistory {
+            recordHistory(frame)
+            archive.record(frame.system, groups: frame.groups, interval: interval.rawValue, at: frame.date)
+            saveHistoryIfDue(at: frame.date)
+        }
         latestFrame = frame
         let nextHeadline = Headline(cpu: frame.system.cpuTotal, memoryUsed: frame.system.memoryUsed)
         if nextHeadline != headline { headline = nextHeadline }
         if !visibleSurfaces.isEmpty { publishDetail() }
         hasFirstFrame = true
+    }
+
+    private func saveHistoryIfDue(at date: Date) {
+        guard date.timeIntervalSince(lastHistorySave) >= Self.historySaveInterval else { return }
+        lastHistorySave = date
+        archive.save()
     }
 
     private func publishDetail() {
