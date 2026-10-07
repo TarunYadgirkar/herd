@@ -45,10 +45,10 @@ struct EnergyPerformanceView: View {
             point.systemWatts ?? point.cpuWatts.map { $0 + (point.gpuWatts ?? 0) + (point.aneWatts ?? 0) }
         }
         return [
-            PerformanceStat(label: "CPU", value: Format.watts(power.cpuWatts)),
-            PerformanceStat(label: "GPU", value: Format.watts(power.gpuWatts)),
-            PerformanceStat(label: "Neural Engine", value: Format.watts(power.aneWatts), help: "Power used for on-device machine learning"),
-            PerformanceStat(label: "Memory", value: Format.watts(power.dramWatts)),
+            PerformanceStat(label: "CPU", value: Format.watts(power.cpuWatts), color: ChartPalette.cpuPower),
+            PerformanceStat(label: "GPU", value: Format.watts(power.gpuWatts), color: ChartPalette.gpuPower),
+            PerformanceStat(label: "Neural Engine", value: Format.watts(power.aneWatts), help: "Power used for on-device machine learning", color: ChartPalette.anePower),
+            PerformanceStat(label: "Memory", value: Format.watts(power.dramWatts), color: ChartPalette.dramPower),
             PerformanceStat(
                 label: "Used",
                 value: PerformanceFormat.wattHours(used / Self.secondsPerHour),
@@ -66,7 +66,7 @@ private struct EnergyTodayCard: View {
 
     var body: some View {
         PerformanceCard(title: "Energy by app today", help: "Energy each app has used since midnight.") {
-            Text("Since midnight").font(.caption).foregroundStyle(.secondary)
+            Text("Since midnight").font(.captionText).foregroundStyle(.secondary)
         } content: {
             if usage.isEmpty {
                 ChartMessage(text: "No app activity recorded yet today.", height: 80)
@@ -85,7 +85,7 @@ private struct EnergyTodayCard: View {
                 numberHeader("Network")
                 numberHeader("Disk")
             }
-            .font(.caption)
+            .font(.captionText)
             .foregroundStyle(.secondary)
             Divider()
             ForEach(usage.prefix(Self.rowLimit)) { row in

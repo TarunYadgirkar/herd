@@ -15,6 +15,7 @@ Runs unprivileged: no root helper, no sandbox.
 swift build                      # debug build
 ./scripts/build-app.sh           # release build packaged as build/Herd.app
 ./scripts/build-app.sh --install # also copies it to /Applications
+swiftlint lint                   # cyclomatic complexity stays at 15 or below
 ```
 
 ## Layout
@@ -28,3 +29,5 @@ swift build                      # debug build
 | `Sources/Herd/Actions` | Quit, force quit, pause, efficiency mode, sample |
 
 Design tokens (colors, fonts, spacing) live in `Sources/Herd/UI/Theme.swift`. Use them instead of raw values.
+
+The interface is set in Red Hat Text, with Red Hat Display for large numbers. Both ship in `Resources/Fonts` under the SIL Open Font License, and the app bundle registers them through `ATSApplicationFontsPath`.

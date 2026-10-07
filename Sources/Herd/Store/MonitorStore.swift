@@ -89,11 +89,6 @@ final class MonitorStore {
         Task { await refresh(force: true) }
     }
 
-    var ownCPU: Double {
-        let pid = getpid()
-        return groups.first { $0.pids.contains(pid) }?.processes.first { $0.sample.pid == pid }?.sample.cpuPercent ?? 0
-    }
-
     var historySamples: Int {
         min(Int(Series.window / interval.rawValue), Series.capacity)
     }

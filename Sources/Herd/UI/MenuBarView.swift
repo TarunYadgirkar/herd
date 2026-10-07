@@ -255,7 +255,7 @@ private struct SystemStats: View {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
             Text(MenuBarFormat.gigabytes(store.system.memoryUsed)).font(.displaySmall)
             Text("of \(MenuBarFormat.wholeGigabytes(store.system.memoryTotal))")
-                .font(.caption.monospacedDigit())
+                .font(.captionText.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
         .lineLimit(1)
@@ -280,7 +280,7 @@ private struct StatColumn<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.caption)
+                .font(.captionText)
                 .foregroundStyle(.secondary)
             content
         }
@@ -297,10 +297,10 @@ private struct RateLine: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: symbol)
-                .font(.caption2.weight(.bold))
+                .font(.footnoteText.weight(.bold))
                 .foregroundStyle(color)
             Text(Format.rate(rate))
-                .font(.callout.monospacedDigit())
+                .font(.calloutText.monospacedDigit())
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label) \(Format.rate(rate))")
@@ -315,7 +315,7 @@ private struct RankingHeader: View {
     var body: some View {
         HStack {
             Text("Top apps")
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadText.weight(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
             Picker("Rank apps by", selection: $metric) {
@@ -379,7 +379,7 @@ private struct GroupRow: View {
         if isHovered && canAct {
             Button(action: quit) {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
+                    .font(.captionText.weight(.semibold))
                     .frame(width: 16, height: 16)
                     .contentShape(Rectangle())
             }
@@ -425,7 +425,7 @@ private struct FeedbackLine: View {
 
     var body: some View {
         Label(message, systemImage: "info.circle")
-            .font(.callout)
+            .font(.calloutText)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .transition(.opacity)

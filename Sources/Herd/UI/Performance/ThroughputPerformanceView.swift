@@ -74,8 +74,8 @@ struct ThroughputPerformanceView: View {
         PerformanceHeader(
             title: kind.title,
             value: Format.rate(live.in),
-            caption: "\(kind.inName) now, \(kind.outName.lowercased()) \(Format.rate(live.out))",
-            stats: stats,
+            symbol: HeadlineSymbol(name: "arrow.down", color: ChartPalette.download),
+            stats: stats(outRate: live.out),
             range: context.range
         )
         PerformanceChart(
@@ -91,9 +91,10 @@ struct ThroughputPerformanceView: View {
         )
     }
 
-    private var stats: [PerformanceStat] {
+    private func stats(outRate: Double) -> [PerformanceStat] {
         let window = context.historyRange.title
         return [
+            PerformanceStat(label: "\(kind.outName) now", value: Format.rate(outRate), color: ChartPalette.upload),
             PerformanceStat(label: kind.inTotalLabel, value: PerformanceFormat.bytes(context.total { kind.inRate($0) }), help: "Total over the last \(window)"),
             PerformanceStat(label: kind.outTotalLabel, value: PerformanceFormat.bytes(context.total { kind.outRate($0) }), help: "Total over the last \(window)"),
             PerformanceStat(label: "Peak \(kind.inName.lowercased())", value: Format.rate(context.peak { kind.inRate($0) } ?? 0)),

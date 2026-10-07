@@ -1,0 +1,10 @@
+only_rules:
+  - cyclomatic_complexity
+
+included:
+  - Sources
+
+cyclomatic_complexity:
+  warning: 15
+  error: 15
+  ignores_case_statements: false

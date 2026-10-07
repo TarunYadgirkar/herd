@@ -24,18 +24,29 @@ struct SensorsPerformanceView: View {
                 context: context,
                 includesZero: false
             )
-            if !sensors.fans.isEmpty {
-                PerformanceChart(
-                    title: "Fan speed",
-                    series: [ChartSeries(name: "Fan", color: ChartPalette.fan, values: context.values { $0.fanRPM })],
-                    unit: .rpm,
-                    context: context,
-                    height: 160
-                )
-            }
+            if !sensors.fans.isEmpty { fanChart }
             SensorListCard(sensors: sensors)
         } else {
             SectionMessage(title: "Sensors", symbol: PerformanceSection.sensors.symbol, message: PerformanceCopy.unavailable)
+        }
+    }
+
+    @ViewBuilder
+    private var fanChart: some View {
+        if (context.peak { $0.fanRPM } ?? 0) > 0 {
+            PerformanceChart(
+                title: "Fan speed",
+                series: [ChartSeries(name: "Fan", color: ChartPalette.fan, values: context.values { $0.fanRPM })],
+                unit: .rpm,
+                context: context,
+                height: 160
+            )
+        } else {
+            ChartCard(title: "Fan speed", legend: []) {
+                Label("The fans stayed off. Your Mac is cool enough without them.", systemImage: "fan")
+                    .font(.calloutText)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -117,11 +128,11 @@ private struct SensorGroupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(group.name)
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadText.weight(.semibold))
             ForEach(group.readings) { reading in
                 HStack(spacing: Theme.itemSpacing) {
                     Text(reading.name)
-                        .font(.callout)
+                        .font(.calloutText)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)

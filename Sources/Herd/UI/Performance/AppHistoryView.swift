@@ -27,7 +27,7 @@ struct AppHistoryView: View {
     private func header(_ usage: [AppUsage]) -> some View {
         let total = usage.reduce(0) { $0 + $1.energyWattHours }
         return HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
-            Text("App history").font(.title2.weight(.semibold))
+            Text("App history").font(.sectionTitle)
             Text("Since midnight").foregroundStyle(.secondary)
             Spacer(minLength: Theme.groupSpacing)
             Text("\(PerformanceFormat.wattHours(total)) used")

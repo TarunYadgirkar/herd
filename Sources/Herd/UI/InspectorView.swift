@@ -71,7 +71,7 @@ private struct InspectorSection<Content: View>: View {
                 Spacer()
                 if let detail { Text(detail).monospacedDigit() }
             }
-            .font(.caption.weight(.medium))
+            .font(.captionText.weight(.medium))
             .foregroundStyle(.secondary)
             content
         }
@@ -87,11 +87,14 @@ private struct InspectorHeader: View {
                 GroupIcon(group: group, size: 48)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(group.name)
-                        .font(.title2.weight(.semibold))
+                        .font(.sectionTitle)
                         .lineLimit(2)
                         .textSelection(.enabled)
                     HStack(spacing: 6) {
-                        Text(summary).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                        Label(summary, systemImage: kindSymbol)
+                            .font(.subheadText.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .help(kindTitle)
                         if group.isSuspended { StatePill(text: "Paused", color: Theme.warning) }
                     }
                 }
@@ -102,7 +105,15 @@ private struct InspectorHeader: View {
 
     private var summary: String {
         let count = group.processes.count
-        return "\(kindTitle) · \(count) \(count == 1 ? "process" : "processes")"
+        return "\(count) \(count == 1 ? "process" : "processes")"
+    }
+
+    private var kindSymbol: String {
+        switch group.kind {
+        case .apps: "macwindow"
+        case .background: "gearshape.2"
+        case .system: "apple.logo"
+        }
     }
 
     private var kindTitle: String {
@@ -126,7 +137,7 @@ private struct PathRow: View {
     var body: some View {
         HStack(spacing: Theme.itemSpacing) {
             Text(ScriptLabel.abbreviate(path))
-                .font(.caption)
+                .font(.captionText)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -147,7 +158,7 @@ private struct ExplanationSection: View {
     var body: some View {
         InspectorSection(title: "What is this?") {
             Text(text)
-                .font(.callout)
+                .font(.calloutText)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
         }
@@ -185,25 +196,22 @@ private struct MetricTile: View {
 
     var body: some View {
         let heat = column.heat(value)
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             Label(column.title, systemImage: column.symbol)
-                .font(.caption)
+                .font(.captionText)
                 .foregroundStyle(.secondary)
             Text((isApproximate ? "≈ " : "") + column.format(value))
                 .font(.displaySmall)
                 .foregroundStyle(heat > 0.85 ? Theme.hot : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+            Meter(fraction: heat, color: Theme.heatColor(heat))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, Theme.itemSpacing)
-        .background(fill(heat), in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+        .surface()
         .accessibilityElement(children: .combine)
-    }
-
-    private func fill(_ heat: Double) -> AnyShapeStyle {
-        heat > 0 ? AnyShapeStyle(Theme.heatColor(heat).opacity(0.10 + heat * 0.22)) : AnyShapeStyle(.quaternary.opacity(0.6))
     }
 }
 
@@ -246,7 +254,7 @@ private struct HistoryChart: View {
         let peak = points.map(\.value).max() ?? 0
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title).font(.callout.weight(.medium))
+                Text(title).font(.calloutText.weight(.medium))
                 Spacer()
                 Text("Peak \(format(peak))").font(.metricSmall).foregroundStyle(.secondary)
             }
@@ -279,7 +287,7 @@ private struct HistoryChart: View {
             AxisGridLine()
             AxisValueLabel {
                 if let seconds = value.as(Double.self) {
-                    Text(seconds == 0 ? "now" : "\(Int(-seconds))s").font(.caption2.monospacedDigit())
+                    Text(seconds == 0 ? "now" : "\(Int(-seconds))s").font(.footnoteText.monospacedDigit())
                 }
             }
         }
@@ -290,7 +298,7 @@ private struct HistoryChart: View {
             AxisGridLine()
             AxisValueLabel {
                 if let amount = value.as(Double.self) {
-                    Text(format(amount)).font(.caption2.monospacedDigit())
+                    Text(format(amount)).font(.footnoteText.monospacedDigit())
                 }
             }
         }
@@ -298,10 +306,10 @@ private struct HistoryChart: View {
 
     private var placeholder: some View {
         Text("Collecting samples")
-            .font(.caption)
+            .font(.captionText)
             .foregroundStyle(.tertiary)
             .frame(maxWidth: .infinity, minHeight: Self.height)
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+            .surface()
     }
 
     private var points: [ChartPoint] {
@@ -408,12 +416,12 @@ private struct ProcessRow: View {
     private var titleLine: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(process.title)
-                .font(.callout)
+                .font(.calloutText)
                 .lineLimit(1)
                 .truncationMode(.middle)
             if sample.isApproximate {
                 Text("≈")
-                    .font(.callout)
+                    .font(.calloutText)
                     .foregroundStyle(.secondary)
                     .help("Read from ps because macOS hides this process's details from regular apps")
             }
@@ -434,7 +442,7 @@ private struct ProcessRow: View {
                 Text(subtitle).lineLimit(1).truncationMode(.middle)
             }
         }
-        .font(.caption)
+        .font(.captionText)
         .foregroundStyle(.secondary)
     }
 
@@ -490,7 +498,7 @@ private struct InspectorEmptyState: View {
                 .font(.system(size: 30, weight: .light))
                 .foregroundStyle(.tertiary)
             Text(hasQuit ? "This app has quit." : "Select an app to see its history and processes.")
-                .font(.callout)
+                .font(.calloutText)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }

@@ -160,9 +160,10 @@ struct ContentView: View {
     }
 
     private var subtitle: String {
+        guard store.hasFirstFrame else { return "Counting the herd…" }
+        guard !store.isPaused else { return "Updates paused" }
         let apps = store.groups.filter { $0.kind == .apps }.count
-        let paused = store.isPaused ? " · Paused" : ""
-        return "\(apps) apps · \(store.processCount) processes · Herd uses \(Format.percent(store.ownCPU)) CPU\(paused)"
+        return "\(store.processCount) processes in \(apps) apps"
     }
 }
 

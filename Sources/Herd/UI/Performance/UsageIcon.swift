@@ -9,11 +9,7 @@ struct UsageIcon: View {
             Image(nsImage: IconProvider.icon(forPath: bundlePath, size: size))
                 .frame(width: size, height: size)
         } else {
-            Image(systemName: "terminal")
-                .font(.system(size: size * 0.62, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: size, height: size)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
+            FallbackIcon(symbol: "terminal", size: size)
         }
     }
 }

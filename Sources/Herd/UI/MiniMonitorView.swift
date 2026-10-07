@@ -29,7 +29,7 @@ struct MiniMonitorView: View {
                     Spacer(minLength: 4)
                     Text(Format.percent(group.metrics.cpu)).font(.metricSmall)
                 }
-                .font(.callout)
+                .font(.calloutText)
             }
         }
         .padding(Theme.innerPadding)
@@ -52,7 +52,7 @@ struct MiniMonitorView: View {
 
     private func stat<Detail: View>(_ title: String, value: String, @ViewBuilder detail: () -> Detail) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(.captionText).foregroundStyle(.secondary)
             Text(value).font(.displaySmall)
             detail()
         }

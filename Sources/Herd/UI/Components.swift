@@ -47,17 +47,26 @@ struct GroupIcon: View {
             Image(nsImage: image)
                 .frame(width: size, height: size)
         } else {
-            Image(systemName: fallbackSymbol)
-                .font(.system(size: size * 0.62, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: size, height: size)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
+            FallbackIcon(symbol: fallbackSymbol, size: size)
         }
     }
 
     private var fallbackSymbol: String {
         if let runtime = group.runtime { return runtime.symbolName }
         return group.kind == .system ? "gearshape" : "terminal"
+    }
+}
+
+struct FallbackIcon: View {
+    let symbol: String
+    let size: CGFloat
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.72))
+            .foregroundStyle(.secondary)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
@@ -111,14 +120,37 @@ struct HeatValue: View {
             .font(.metric)
             .foregroundStyle(heat > 0.85 ? Theme.hot : .primary)
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background {
+            .overlay(alignment: .bottom) {
                 if heat > 0 {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Theme.heatColor(heat).opacity(0.10 + heat * 0.22))
+                    Meter(fraction: heat, color: Theme.heatColor(heat))
+                        .offset(y: Self.meterDrop)
                 }
             }
+            .padding(.horizontal, 6)
+    }
+
+    private static let meterDrop: CGFloat = 5
+}
+
+struct Meter: View {
+    let fraction: Double
+    var color: Color = Theme.accent
+    var height: CGFloat = Theme.meterHeight
+
+    private static let minimumLength: CGFloat = 3
+
+    var body: some View {
+        GeometryReader { proxy in
+            Capsule()
+                .fill(Theme.track)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(height * Self.minimumLength, proxy.size.width * min(max(fraction, 0), 1)))
+                }
+        }
+        .frame(height: height)
+        .accessibilityHidden(true)
     }
 }
 
@@ -128,10 +160,10 @@ struct StatePill: View {
 
     var body: some View {
         Text(text)
-            .font(.caption.weight(.semibold))
+            .font(.captionText.weight(.semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
-            .background(color.opacity(0.14), in: Capsule())
+            .background(color.opacity(0.12), in: Capsule())
     }
 }

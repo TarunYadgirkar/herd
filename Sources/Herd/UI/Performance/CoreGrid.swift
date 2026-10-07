@@ -41,8 +41,8 @@ private struct ClusterBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             HStack(spacing: Theme.itemSpacing) {
-                Text(cluster.name).font(.subheadline.weight(.semibold))
-                Text("\(cluster.cores.count) cores").font(.caption).foregroundStyle(.secondary)
+                Text(cluster.name).font(.subheadText.weight(.semibold))
+                Text("\(cluster.cores.count) cores").font(.captionText).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Text(frequency.map(PerformanceFormat.megahertz) ?? PerformanceFormat.missing)
                     .font(.metricSmall)
@@ -71,7 +71,7 @@ private struct CoreTile: View {
         let percent = Format.percent(usage * 100)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                Text("Core \(index + 1)").font(.caption).foregroundStyle(.secondary)
+                Text("Core \(index + 1)").font(.captionText).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Text(percent).font(.metricSmall)
             }
@@ -79,7 +79,7 @@ private struct CoreTile: View {
                 .frame(height: Self.sparkHeight)
         }
         .padding(Theme.itemSpacing)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: Theme.cornerRadius - 4, style: .continuous))
+        .surface(cornerRadius: Theme.innerRadius)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Core \(index + 1)")
         .accessibilityValue("\(percent) in use")

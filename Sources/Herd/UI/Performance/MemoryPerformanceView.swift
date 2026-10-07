@@ -53,11 +53,11 @@ struct MemoryPerformanceView: View {
 
     private var stats: [PerformanceStat] {
         [
-            PerformanceStat(label: "App memory", value: Format.bytes(system.appMemory), help: "Used by open apps and their helpers."),
-            PerformanceStat(label: "Wired", value: Format.bytes(system.wiredMemory), help: "Reserved by macOS itself. It can't be freed."),
-            PerformanceStat(label: "Compressed", value: Format.bytes(system.compressedMemory), help: "Squeezed to make room. A lot of it means memory is tight."),
-            PerformanceStat(label: "Cached files", value: Format.bytes(system.cachedFiles), help: "Recently used files kept for speed."),
-            PerformanceStat(label: "Swap used", value: swapValue),
+            PerformanceStat(label: "App memory", value: Format.bytes(system.appMemory), help: "Used by open apps and their helpers.", color: ChartPalette.appMemory),
+            PerformanceStat(label: "Wired", value: Format.bytes(system.wiredMemory), help: "Reserved by macOS itself. It can't be freed.", color: ChartPalette.wiredMemory),
+            PerformanceStat(label: "Compressed", value: Format.bytes(system.compressedMemory), help: "Squeezed to make room. A lot of it means memory is tight.", color: ChartPalette.compressedMemory),
+            PerformanceStat(label: "Cached files", value: Format.bytes(system.cachedFiles), help: "Recently used files kept for speed.", color: ChartPalette.cachedFiles),
+            PerformanceStat(label: "Swap used", value: swapValue, color: ChartPalette.swap),
         ]
     }
 
@@ -107,7 +107,7 @@ private struct PressureCard: View {
             VStack(alignment: .leading, spacing: Theme.itemSpacing) {
                 strip
                 Text(MemoryPressureCopy.explanation(context.system.pressure))
-                    .font(.callout)
+                    .font(.calloutText)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -10,7 +10,6 @@ struct CPUPerformanceView: View {
         PerformanceHeader(
             title: "CPU",
             value: Format.percent(system.cpuTotal * 100),
-            caption: "User \(Format.percent(system.cpuUser * 100)) · System \(Format.percent(system.cpuSystem * 100))",
             stats: stats,
             range: context.range
         )
@@ -30,6 +29,8 @@ struct CPUPerformanceView: View {
 
     private var stats: [PerformanceStat] {
         var stats = [
+            PerformanceStat(label: "User", value: Format.percent(system.cpuUser * 100), help: "Work done by apps", color: ChartPalette.cpuUser),
+            PerformanceStat(label: "System", value: Format.percent(system.cpuSystem * 100), help: "Work done by macOS on their behalf", color: ChartPalette.cpuSystem),
             PerformanceStat(label: "Cores", value: "\(system.perCoreUsage.count)"),
             PerformanceStat(
                 label: "Load average",

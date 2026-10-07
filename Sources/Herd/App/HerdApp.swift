@@ -12,6 +12,7 @@ struct HerdApp: App {
     var body: some Scene {
         Window("Herd", id: "main") {
             RootView()
+                .herdStyle()
                 .environment(store)
                 .environment(actions)
                 .environment(\.historySamples, store.historySamples)
@@ -23,6 +24,7 @@ struct HerdApp: App {
 
         MenuBarExtra(isInserted: $showMenuBarExtra) {
             MenuBarView()
+                .herdStyle()
                 .environment(store)
                 .environment(actions)
                 .environment(\.historySamples, store.historySamples)
@@ -34,6 +36,7 @@ struct HerdApp: App {
 
         WindowGroup("Process Info", id: "process-info", for: String.self) { $processID in
             ProcessInfoView(processID: processID)
+                .herdStyle()
                 .environment(store)
                 .environment(actions)
                 .environment(\.historySamples, store.historySamples)
@@ -44,6 +47,7 @@ struct HerdApp: App {
 
         Window("Herd Mini", id: "mini") {
             MiniMonitorView()
+                .herdStyle()
                 .environment(store)
                 .environment(\.historySamples, store.historySamples)
         }
@@ -55,6 +59,7 @@ struct HerdApp: App {
 
         Settings {
             SettingsView()
+                .herdStyle()
                 .environment(store)
         }
     }

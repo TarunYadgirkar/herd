@@ -152,7 +152,7 @@ struct ProcessTableView: View {
                 HeatValue(column: column, value: row[keyPath: value])
             }
         }
-        .width(min: 64, ideal: column == .network || column == .disk || column == .impact ? 84 : 72)
+        .width(min: 64, ideal: column == .network || column == .disk || column == .impact ? 104 : 76)
         .customizationID(column.rawValue)
         .defaultVisibility(column == .disk ? .hidden : .automatic)
     }
@@ -186,7 +186,7 @@ private struct NameCell: View {
                     .layoutPriority(1)
                 if let subtitle = row.subtitle {
                     Text(subtitle)
-                        .font(.callout)
+                        .font(.calloutText)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.head)
@@ -196,9 +196,10 @@ private struct NameCell: View {
             ForEach(ports, id: \.self) { port in
                 Text(":" + String(port))
                     .font(.metricSmall)
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 5)
-                    .background(Theme.accent.opacity(0.12), in: Capsule())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Theme.surfaceRaised, in: Capsule())
                     .help("Listening on port " + String(port))
             }
             if !sleepReasons.isEmpty {
@@ -216,7 +217,7 @@ private struct NameCell: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
-                    .background(.quaternary, in: Capsule())
+                    .background(Theme.surfaceRaised, in: Capsule())
                     .help("\(row.count) processes")
                     .accessibilityLabel("\(row.count) processes")
             }
@@ -266,7 +267,7 @@ private struct TrendCell: View {
         if row.role == .group {
             let series = history(row.id).series(for: column)
             Sparkline(values: series.values, color: color(series.latest), ceiling: column.heatRange.lowerBound * 2)
-                .frame(height: 18)
+                .frame(height: 20)
                 .padding(.vertical, 2)
         }
     }

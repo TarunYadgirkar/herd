@@ -10,7 +10,7 @@ struct PerformanceCard<Accessory: View, Content: View>: View {
         VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
                 Text(title)
-                    .font(.headline)
+                    .font(.headlineText)
                     .help(help ?? "")
                 Spacer(minLength: Theme.groupSpacing)
                 accessory
@@ -19,7 +19,7 @@ struct PerformanceCard<Accessory: View, Content: View>: View {
         }
         .padding(Theme.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+        .surface()
     }
 }
 
@@ -69,7 +69,7 @@ struct ChartLegend: View {
                 HStack(spacing: 5) {
                     Swatch(color: item.color)
                     Text(item.name)
-                        .font(.caption)
+                        .font(.captionText)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -94,7 +94,7 @@ struct ChartMessage: View {
 
     var body: some View {
         Text(text)
-            .font(.callout)
+            .font(.calloutText)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
@@ -117,14 +117,14 @@ struct ChartCallout: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(time)
-                .font(.caption2.monospacedDigit())
+                .font(.footnoteText.monospacedDigit())
                 .foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: Theme.itemSpacing, verticalSpacing: 2) {
                 ForEach(rows) { row in
                     GridRow {
                         HStack(spacing: 5) {
                             Swatch(color: row.color)
-                            Text(row.name).font(.caption).fixedSize()
+                            Text(row.name).font(.captionText).fixedSize()
                         }
                         Text(row.value)
                             .font(.metricSmall)
@@ -144,6 +144,7 @@ struct PerformanceStat: Identifiable {
     let label: String
     let value: String
     var help: String?
+    var color: Color?
 
     var id: String { label }
 }
@@ -161,9 +162,12 @@ struct StatGrid: View {
         ) {
             ForEach(stats) { stat in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(stat.label)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 5) {
+                        if let color = stat.color { Swatch(color: color) }
+                        Text(stat.label)
+                            .font(.captionText)
+                            .foregroundStyle(.secondary)
+                    }
                     Text(stat.value)
                         .font(.metric)
                         .lineLimit(1)
@@ -176,10 +180,16 @@ struct StatGrid: View {
     }
 }
 
+struct HeadlineSymbol {
+    let name: String
+    let color: Color
+}
+
 struct PerformanceHeader<Badge: View>: View {
     let title: String
     let value: String
-    let caption: String
+    var caption: String?
+    var symbol: HeadlineSymbol?
     let stats: [PerformanceStat]
     let range: Binding<HistoryRange>
     @ViewBuilder let badge: Badge
@@ -190,21 +200,30 @@ struct PerformanceHeader<Badge: View>: View {
         VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
                 Text(title)
-                    .font(.title2.weight(.semibold))
+                    .font(.sectionTitle)
                 badge
                 Spacer(minLength: Theme.groupSpacing)
                 RangePicker(range: range)
             }
             HStack(alignment: .top, spacing: Theme.groupSpacing) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(value)
-                        .font(.display)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text(caption)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 6) {
+                        if let symbol {
+                            Image(systemName: symbol.name)
+                                .font(.sectionTitle)
+                                .foregroundStyle(symbol.color)
+                        }
+                        Text(value)
+                            .font(.display)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    if let caption {
+                        Text(caption)
+                            .font(.captionText.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .frame(minWidth: Self.headlineWidth, alignment: .leading)
                 .accessibilityElement(children: .combine)
@@ -215,8 +234,11 @@ struct PerformanceHeader<Badge: View>: View {
 }
 
 extension PerformanceHeader where Badge == EmptyView {
-    init(title: String, value: String, caption: String, stats: [PerformanceStat], range: Binding<HistoryRange>) {
-        self.init(title: title, value: value, caption: caption, stats: stats, range: range, badge: { EmptyView() })
+    init(
+        title: String, value: String, caption: String? = nil, symbol: HeadlineSymbol? = nil,
+        stats: [PerformanceStat], range: Binding<HistoryRange>
+    ) {
+        self.init(title: title, value: value, caption: caption, symbol: symbol, stats: stats, range: range, badge: { EmptyView() })
     }
 }
 
