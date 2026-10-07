@@ -23,6 +23,7 @@ final class MonitorStore {
     static let intervalKey = "updateInterval"
     private static let warmUpDelay = Duration.milliseconds(700)
     private static let historySaveInterval: TimeInterval = 300
+    private static let timerTolerance = 0.1
 
     struct Headline: Equatable {
         var cpu: Double = 0
@@ -64,13 +65,16 @@ final class MonitorStore {
     func start() {
         guard loop == nil else { return }
         observeWorkspace()
-        loop = Task { [weak self] in
+        // Utility priority steers sampling off the fastest cores; the tolerance lets macOS coalesce
+        // Herd's wakeups with other timers, which Apple's energy guide asks for (at least 10%).
+        loop = Task(priority: .utility) { [weak self] in
             await self?.engine.start()
             await self?.refresh(force: true)
             try? await Task.sleep(for: Self.warmUpDelay)
             while !Task.isCancelled, let self {
                 await self.refresh()
-                try? await Task.sleep(for: .seconds(self.interval.rawValue))
+                let interval = Duration.seconds(self.interval.rawValue)
+                try? await Task.sleep(for: interval, tolerance: interval * Self.timerTolerance)
             }
         }
     }
