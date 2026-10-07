@@ -91,7 +91,7 @@ private struct InspectorHeader: View {
                         .lineLimit(2)
                         .textSelection(.enabled)
                     HStack(spacing: 6) {
-                        Text(summary).font(.subheadline).foregroundStyle(.secondary)
+                        Text(summary).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
                         if group.isSuspended { StatePill(text: "Paused", color: Theme.warning) }
                     }
                 }
@@ -279,7 +279,7 @@ private struct HistoryChart: View {
             AxisGridLine()
             AxisValueLabel {
                 if let seconds = value.as(Double.self) {
-                    Text(seconds == 0 ? "now" : "\(Int(-seconds))s").font(.caption2)
+                    Text(seconds == 0 ? "now" : "\(Int(-seconds))s").font(.caption2.monospacedDigit())
                 }
             }
         }
@@ -320,7 +320,7 @@ private struct ActionsRow: View {
     @Environment(ActionController.self) private var actions
 
     var body: some View {
-        let canAct = ProcessActions.canAct(on: group)
+        let canAct = ProcessActions.canAct(on: group, action: .quit)
         HStack(spacing: Theme.itemSpacing) {
             button(.quit, help: "Ask \(group.name) to quit normally")
                 .buttonStyle(.bordered)
@@ -361,6 +361,7 @@ private struct ProcessListSection: View {
                 ForEach(sorted) { process in
                     ProcessRow(
                         process: process,
+                        groupName: group.name,
                         isHighlighted: process.id == highlightedID,
                         showsCommandLine: group.runtime != nil
                     )
@@ -377,6 +378,7 @@ private struct ProcessListSection: View {
 
 private struct ProcessRow: View {
     let process: GroupedProcess
+    let groupName: String
     let isHighlighted: Bool
     let showsCommandLine: Bool
 
@@ -400,7 +402,7 @@ private struct ProcessRow: View {
             in: RoundedRectangle(cornerRadius: 6, style: .continuous)
         )
         .contentShape(Rectangle())
-        .contextMenu { ProcessContextMenu(sample: sample, actions: actions) }
+        .contextMenu { ProcessContextMenu(sample: sample, groupName: groupName, actions: actions) }
     }
 
     private var titleLine: some View {
@@ -447,6 +449,7 @@ private struct ProcessRow: View {
 
 private struct ProcessContextMenu: View {
     let sample: ProcessSample
+    let groupName: String
     let actions: ActionController
 
     var body: some View {
@@ -459,14 +462,14 @@ private struct ProcessContextMenu: View {
                 item(.suspend, title: "Pause Process")
             }
         }
-        .disabled(ProcessActions.isProtected(sample))
         Divider()
         Button("Copy PID", systemImage: "number") { copy(String(sample.pid)) }
         Button("Copy Command Line", systemImage: "terminal") { copy(sample.commandLine) }
     }
 
     private func item(_ action: ProcessAction, title: String) -> some View {
-        Button(title, systemImage: action.symbol) { actions.perform(action, on: sample) }
+        Button(title, systemImage: action.symbol) { actions.request(action, on: sample, groupName: groupName) }
+            .disabled(ProcessActions.isProtected(sample, for: action))
     }
 
     private func copy(_ text: String) {

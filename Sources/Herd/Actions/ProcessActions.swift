@@ -15,12 +15,12 @@ enum ProcessAction: String, Identifiable {
         }
     }
 
-    var pastTense: String {
+    func doneMessage(_ name: String) -> String {
         switch self {
-        case .quit: "Quit"
-        case .forceQuit: "Force quit"
-        case .suspend: "Paused"
-        case .resume: "Resumed"
+        case .quit: "Asked \(name) to quit"
+        case .forceQuit: "Force quit \(name)"
+        case .suspend: "Paused \(name)"
+        case .resume: "Resumed \(name)"
         }
     }
 
@@ -32,6 +32,8 @@ enum ProcessAction: String, Identifiable {
         case .resume: "play.circle"
         }
     }
+
+    var isDestructive: Bool { self == .forceQuit }
 
     var signal: Int32 {
         switch self {
@@ -45,38 +47,47 @@ enum ProcessAction: String, Identifiable {
 
 struct ActionOutcome {
     let succeeded: Int
+    let protectedNames: [String]
     let deniedNames: [String]
-    let failedNames: [String]
+    let goneNames: [String]
 
-    var message: String? {
+    func message(for action: ProcessAction, name: String) -> String {
         if !deniedNames.isEmpty {
-            let names = deniedNames.prefix(3).joined(separator: ", ")
-            return "macOS didn't allow Herd to touch \(names). These belong to the system, so only an administrator can stop them."
+            return "macOS didn't let Herd \(action.title.lowercased()) \(list(deniedNames)). Only an administrator can stop system processes."
         }
-        if !failedNames.isEmpty {
-            return "\(failedNames.prefix(3).joined(separator: ", ")) had already exited."
-        }
-        return nil
+        if succeeded > 0 { return action.doneMessage(name) }
+        if !protectedNames.isEmpty { return "\(list(protectedNames)) keeps macOS running, so Herd won't touch it." }
+        if !goneNames.isEmpty { return "\(name) had already exited." }
+        return "Nothing to \(action.title.lowercased()) in \(name)."
+    }
+
+    private func list(_ names: [String]) -> String {
+        names.prefix(3).joined(separator: ", ")
     }
 }
 
 enum ProcessActions {
     // Signalling these logs you out, hangs the Mac, or kills Herd itself.
     private static let protectedNames: Set<String> = ["WindowServer", "loginwindow", "launchd", "kernel_task"]
+    // Pausing these freezes the desktop: no Dock, no menu bar, no way back to Herd to resume them.
+    private static let unpausableNames: Set<String> = ["Dock", "Finder", "SystemUIServer", "ControlCenter", "NotificationCenter", "coreaudiod", "hidd"]
 
-    static func isProtected(_ sample: ProcessSample) -> Bool {
-        sample.pid <= 1 || sample.pid == getpid() || protectedNames.contains(sample.name)
+    static func isProtected(_ sample: ProcessSample, for action: ProcessAction = .quit) -> Bool {
+        if sample.pid <= 1 || sample.pid == getpid() || protectedNames.contains(sample.name) { return true }
+        return action == .suspend && unpausableNames.contains(sample.name)
     }
 
-    static func canAct(on group: AppGroup) -> Bool {
-        group.processes.contains { !isProtected($0.sample) }
+    static func canAct(on group: AppGroup, action: ProcessAction = .quit) -> Bool {
+        group.processes.contains { !isProtected($0.sample, for: action) }
     }
 
     @MainActor
     static func perform(_ action: ProcessAction, on group: AppGroup) -> ActionOutcome {
-        if action == .quit || action == .forceQuit, let app = runningApp(for: group) {
-            _ = action == .quit ? app.terminate() : app.forceTerminate()
-            if action == .quit { return ActionOutcome(succeeded: 1, deniedNames: [], failedNames: []) }
+        if action == .quit, let app = runningApp(for: group), app.terminate() {
+            return ActionOutcome(succeeded: 1, protectedNames: [], deniedNames: [], goneNames: [])
+        }
+        if action == .forceQuit, let app = runningApp(for: group) {
+            app.forceTerminate()
         }
         return send(action, to: group.processes.map(\.sample))
     }
@@ -87,24 +98,32 @@ enum ProcessActions {
 
     private static func send(_ action: ProcessAction, to samples: [ProcessSample]) -> ActionOutcome {
         var succeeded = 0
-        var denied: [String] = []
-        var failed: [String] = []
-        for sample in samples where !isProtected(sample) {
-            if kill(sample.pid, action.signal) == 0 {
+        var protected: Set<String> = []
+        var denied: Set<String> = []
+        var gone: Set<String> = []
+        for sample in samples {
+            if isProtected(sample, for: action) {
+                protected.insert(sample.name)
+            } else if kill(sample.pid, action.signal) == 0 {
                 succeeded += 1
             } else if errno == EPERM {
-                denied.append(sample.name)
+                denied.insert(sample.name)
             } else {
-                failed.append(sample.name)
+                gone.insert(sample.name)
             }
         }
-        return ActionOutcome(succeeded: succeeded, deniedNames: Array(Set(denied)).sorted(), failedNames: Array(Set(failed)).sorted())
+        return ActionOutcome(succeeded: succeeded, protectedNames: protected.sorted(), deniedNames: denied.sorted(), goneNames: gone.sorted())
     }
 
     @MainActor
     private static func runningApp(for group: AppGroup) -> NSRunningApplication? {
-        guard let pid = group.mainPid else { return nil }
-        return NSRunningApplication(processIdentifier: pid)
+        guard let pid = group.mainPid, let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy != .prohibited else { return nil }
+        return app
+    }
+
+    @MainActor
+    static func hasRunningApp(_ group: AppGroup) -> Bool {
+        runningApp(for: group) != nil
     }
 
     @MainActor

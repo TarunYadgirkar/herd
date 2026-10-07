@@ -9,7 +9,7 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var store = store
         Form {
-            Picker("Update", selection: $store.interval) {
+            Picker("Update numbers", selection: $store.interval) {
                 ForEach(UpdateInterval.allCases) { Text($0.title).tag($0) }
             }
             Toggle("Show Herd in the menu bar", isOn: $showMenuBarExtra)

@@ -137,7 +137,6 @@ enum TableRowBuilder {
         }
     }
 
-    // While the pointer is over the table, rows keep their positions so the one being aimed at doesn't jump away.
     static func holding(_ rows: [TableRowItem], order: [String: Int]) -> [TableRowItem] {
         rows.sorted { (order[$0.id] ?? Int.max) < (order[$1.id] ?? Int.max) }.map { row in
             var copy = row

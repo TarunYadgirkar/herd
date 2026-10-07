@@ -246,7 +246,7 @@ private struct MemoryTile: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(Format.bytes(system.memoryUsed)).font(.displaySmall)
-                    Text("of \(totalLabel)").font(.caption).foregroundStyle(.secondary)
+                    Text("of \(totalLabel)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
                 HStack(spacing: Theme.itemSpacing) {
                     MemoryBar(system: system)
@@ -542,6 +542,7 @@ private struct CulpritRow: View {
             HStack(spacing: 6) {
                 GroupIcon(group: group, size: 16)
                 message
+                    .monospacedDigit()
                     .lineLimit(1)
                     .truncationMode(.tail)
             }

@@ -28,11 +28,11 @@ struct ContentView: View {
     @Environment(MonitorStore.self) private var store
     @Environment(ActionController.self) private var actions
 
-    @State private var selection: Set<TableRowItem.ID> = []
+    @State private var selection: TableRowItem.ID?
+    @State private var inspectedGroupID: String?
     @State private var sortOrder = [KeyPathComparator(\TableRowItem.cpu, order: .reverse)]
     @State private var query = ""
-    @State private var heldOrder: [String: Int]?
-    @State private var holdUntil = Date.distantPast
+    @State private var hold = OrderHold()
     @State private var showInspector = false
     @AppStorage("scope") private var scope: Scope = .all
 
@@ -49,13 +49,14 @@ struct ContentView: View {
                 history: store.history(for:),
                 trendColumn: trendColumn,
                 actions: actions,
-                onOpen: { showInspector = true }
+                onOpen: { showInspector = true },
+                isSearching: !query.trimmingCharacters(in: .whitespaces).isEmpty
             )
         }
         .overlay(alignment: .bottom) { ToastView(message: actions.toast) }
         .background(WindowVisibilityReader { store.setSurface("main", visible: $0) })
         .inspector(isPresented: $showInspector) {
-            InspectorView(groupID: selectedGroupID, processID: selectedProcessID)
+            InspectorView(groupID: inspectedGroupID, processID: selectedProcessID)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 460)
         }
         .searchable(text: $query, placement: .toolbar, prompt: "Search apps, processes, PIDs")
@@ -63,20 +64,18 @@ struct ContentView: View {
         .actionConfirmation(actions)
         .navigationTitle("Herd")
         .navigationSubtitle(subtitle)
-        .onChange(of: sortOrder) { _, _ in
-            heldOrder = nil
-            holdUntil = .distantPast
-        }
+        .onChange(of: sortOrder) { _, _ in hold.release() }
         .onChange(of: store.requestedSelection, initial: true) { _, requested in
             guard let requested else { return }
             scope = .all
             query = ""
-            selection = [requested]
+            selection = requested
             showInspector = true
             store.requestedSelection = nil
         }
         .onChange(of: selection) { _, newValue in
-            if !newValue.isEmpty && !showInspector && UserDefaults.standard.bool(forKey: "autoOpenInspector") { showInspector = true }
+            inspectedGroupID = groupID(containing: newValue)
+            if newValue != nil && !showInspector && UserDefaults.standard.bool(forKey: "autoOpenInspector") { showInspector = true }
         }
     }
 
@@ -102,7 +101,7 @@ struct ContentView: View {
             } label: {
                 Label("Details", systemImage: "sidebar.right")
             }
-            .help("Show details for the selected app")
+            .help(showInspector ? "Hide the details panel" : "Show details for the selected app")
         }
     }
 
@@ -110,18 +109,12 @@ struct ContentView: View {
         let groups = store.groups.filter { scope.includes($0.kind) }
         let rows = TableRowBuilder.rows(for: groups, query: query)
         let sorted = TableRowBuilder.sorted(rows, using: sortOrder)
-        guard let heldOrder, Date() < holdUntil else { return sorted }
-        return TableRowBuilder.holding(sorted, order: heldOrder)
+        guard let order = hold.activeOrder else { return sorted }
+        return TableRowBuilder.holding(sorted, order: order)
     }
 
-    private static let holdDuration: TimeInterval = 2.5
-
-    // Rows stay put while the pointer is moving across the table, so the row being aimed at doesn't jump away.
     private func holdOrder() {
-        if heldOrder == nil || Date() >= holdUntil {
-            heldOrder = TableRowBuilder.flattenOrder(visibleRows)
-        }
-        holdUntil = Date().addingTimeInterval(Self.holdDuration)
+        hold.extend { TableRowBuilder.flattenOrder(visibleRows) }
     }
 
     private var trendColumn: MetricColumn {
@@ -136,8 +129,8 @@ struct ContentView: View {
         }
     }
 
-    private var selectedGroupID: String? {
-        guard let id = selection.first else { return nil }
+    private func groupID(containing id: String?) -> String? {
+        guard let id else { return nil }
         if store.group(id: id) != nil { return id }
         return store.groups.first { group in
             group.processes.contains { $0.id == id } || id.hasPrefix(group.id + "/")
@@ -145,7 +138,7 @@ struct ContentView: View {
     }
 
     private var selectedProcessID: String? {
-        guard let id = selection.first, store.group(id: id) == nil, !id.contains("/") else { return nil }
+        guard let id = selection, store.group(id: id) == nil, !id.contains("/") else { return nil }
         return id
     }
 
@@ -166,10 +159,33 @@ private struct ToastView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.regularMaterial, in: Capsule())
-                .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+                .shadow(color: Theme.shadow, radius: 8, y: 2)
                 .padding(.bottom, Theme.groupSpacing)
                 .transition(.opacity.combined(with: .offset(y: 6)))
-                .accessibilityAddTraits(.updatesFrequently)
         }
+    }
+}
+
+// Rows stay put while the pointer is moving across the table, so the row being aimed at doesn't jump away.
+// It's a plain class so pointer movement doesn't invalidate the view on every mouse event.
+@MainActor
+private final class OrderHold {
+    private static let duration: TimeInterval = 2.5
+
+    private var order: [String: Int]?
+    private var until = Date.distantPast
+
+    var activeOrder: [String: Int]? {
+        Date() < until ? order : nil
+    }
+
+    func extend(snapshot: () -> [String: Int]) {
+        if activeOrder == nil { order = snapshot() }
+        until = Date().addingTimeInterval(Self.duration)
+    }
+
+    func release() {
+        order = nil
+        until = .distantPast
     }
 }

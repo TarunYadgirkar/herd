@@ -130,6 +130,7 @@ struct MenuBarView: View {
     @Environment(ActionController.self) private var actions
     @Environment(\.openWindow) private var openWindow
     @AppStorage("menuBarMetric") private var metric: MetricColumn = .cpu
+    @State private var frozenOrder: [String]?
 
     private static let width: CGFloat = 340
     private static let rowLimit = 6
@@ -151,8 +152,7 @@ struct MenuBarView: View {
         .padding(Theme.innerPadding)
         .frame(width: Self.width)
         .animation(.easeOut(duration: 0.2), value: actions.toast)
-        .onAppear { store.setSurface("menu", visible: true) }
-        .onDisappear { store.setSurface("menu", visible: false) }
+        .background(WindowVisibilityReader { store.setSurface("menu", visible: $0) })
     }
 
     @ViewBuilder
@@ -173,10 +173,19 @@ struct MenuBarView: View {
             }
         }
         .padding(.horizontal, -6)
+        .onHover { hovering in
+            frozenOrder = hovering ? rankedGroups.map(\.id) : nil
+        }
     }
 
-    private var topGroups: [AppGroup] {
+    private var rankedGroups: [AppGroup] {
         Array(store.groups.sorted { metric.value($0.metrics) > metric.value($1.metrics) }.prefix(Self.rowLimit))
+    }
+
+    // Rows hold their places while the pointer is over the list, so the quit button can't land on a different app mid-click.
+    private var topGroups: [AppGroup] {
+        guard let frozenOrder else { return rankedGroups }
+        return frozenOrder.compactMap { id in store.groups.first { $0.id == id } }
     }
 
     private func openMain() {
@@ -189,32 +198,28 @@ struct MenuBarView: View {
         openMain()
     }
 
+    // A regular app quits through its own Quit command, which is safe to send in one click. Anything else gets signalled, so it asks first.
     private func quit(_ group: AppGroup) {
-        guard ProcessActions.canAct(on: group) else {
-            actions.show("\(group.name) is part of macOS and can't be stopped safely.")
-            return
-        }
-        let outcome = ProcessActions.perform(.quit, on: group)
-        actions.show(outcome.message ?? "\(ProcessAction.quit.pastTense) \(group.name)")
+        guard ProcessActions.hasRunningApp(group) || ConfirmAlert.confirm(.quit, group) else { return }
+        actions.runConfirmed(.quit, on: group)
     }
 
     private func forceQuit(_ group: AppGroup) {
-        guard ProcessActions.canAct(on: group), ForceQuitAlert.confirm(group) else { return }
-        let outcome = ProcessActions.perform(.forceQuit, on: group)
-        actions.show(outcome.message ?? "\(ProcessAction.forceQuit.pastTense) \(group.name)")
+        guard ConfirmAlert.confirm(.forceQuit, group) else { return }
+        actions.runConfirmed(.forceQuit, on: group)
     }
 }
 
-// Confirmation dialogs attached to a MenuBarExtra window don't present reliably, so Force Quit asks through a modal alert.
+// Confirmation dialogs attached to a MenuBarExtra window don't present reliably, so the menu bar asks through a modal alert.
 @MainActor
-private enum ForceQuitAlert {
-    static func confirm(_ group: AppGroup) -> Bool {
-        let pending = PendingAction(action: .forceQuit, group: group)
+private enum ConfirmAlert {
+    static func confirm(_ action: ProcessAction, _ group: AppGroup) -> Bool {
+        let pending = PendingAction(action: action, group: group)
         let alert = NSAlert()
-        alert.alertStyle = .warning
+        alert.alertStyle = action.isDestructive ? .warning : .informational
         alert.messageText = pending.title
         alert.informativeText = pending.message
-        alert.addButton(withTitle: ProcessAction.forceQuit.title).hasDestructiveAction = true
+        alert.addButton(withTitle: action.title).hasDestructiveAction = action.isDestructive
         alert.addButton(withTitle: "Cancel")
         NSApp.activate()
         return alert.runModal() == .alertFirstButtonReturn
@@ -338,17 +343,25 @@ private struct GroupRow: View {
 
     var body: some View {
         HStack(spacing: Theme.itemSpacing) {
-            GroupIcon(group: group, size: 16)
-            Text(group.name)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Text("\(processCount)")
-                .font(.metricSmall)
-                .foregroundStyle(.secondary)
-                .help(processCount == 1 ? "1 process" : "\(processCount) processes")
-            Spacer(minLength: 4)
-            HeatValue(column: metric, value: metric.value(group.metrics), isApproximate: group.hasApproximateData)
-                .frame(width: 92)
+            Button(action: open) {
+                HStack(spacing: Theme.itemSpacing) {
+                    GroupIcon(group: group, size: 16)
+                    Text(group.name)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text("\(processCount)")
+                        .font(.metricSmall)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(processCount == 1 ? "1 process" : "\(processCount) processes")
+                    Spacer(minLength: 4)
+                    HeatValue(column: metric, value: metric.value(group.metrics), isApproximate: group.hasApproximateData)
+                        .frame(width: 92)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Open \(group.name) in Herd")
+            .accessibilityAction(named: "Quit \(group.name)") { if canAct { quit() } }
             quitSlot
         }
         .padding(.horizontal, 6)
@@ -357,15 +370,8 @@ private struct GroupRow: View {
             RoundedRectangle(cornerRadius: Theme.cornerRadius - 4, style: .continuous)
                 .fill(isHovered ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
         }
-        .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .onTapGesture(perform: open)
-        .help("Open \(group.name) in Herd")
         .contextMenu { menuItems }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(named: "Open in Herd", open)
-        .accessibilityAction(named: "Quit") { if canAct { quit() } }
     }
 
     @ViewBuilder
@@ -380,6 +386,7 @@ private struct GroupRow: View {
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
             .help("Quit \(group.name)")
+            .accessibilityLabel("Quit \(group.name)")
         } else {
             Color.clear.frame(width: 16, height: 16)
         }
@@ -422,7 +429,6 @@ private struct FeedbackLine: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .transition(.opacity)
-            .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
@@ -444,6 +450,7 @@ private struct MenuBarFooter: View {
             .buttonStyle(.borderless)
             .simultaneousGesture(TapGesture().onEnded { NSApp.activate() })
             .help("Open Herd Settings")
+            .accessibilityLabel("Settings")
             Button("Quit Herd") { NSApp.terminate(nil) }
                 .buttonStyle(.borderless)
                 .help("Quit Herd and remove it from the menu bar")

@@ -5,7 +5,7 @@ import SwiftUI
 struct HerdApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var store = AppDelegate.store
-    @State private var actions = ActionController()
+    @State private var actions = ActionController(store: AppDelegate.store)
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
 
     var body: some Scene {

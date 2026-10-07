@@ -3,7 +3,7 @@ import SwiftUI
 
 struct ProcessTableView: View {
     let rows: [TableRowItem]
-    @Binding var selection: Set<TableRowItem.ID>
+    @Binding var selection: TableRowItem.ID?
     @Binding var sortOrder: [KeyPathComparator<TableRowItem>]
     let onPointerMove: () -> Void
     let history: (String) -> GroupHistory
@@ -11,7 +11,10 @@ struct ProcessTableView: View {
     let actions: ActionController
     let onOpen: () -> Void
 
-    @SceneStorage("processTableColumns") private var columnCustomization: TableColumnCustomization<TableRowItem>
+    let isSearching: Bool
+
+    @AppStorage("processTableColumns") private var columnStorage = Data()
+    @State private var columnCustomization = TableColumnCustomization<TableRowItem>()
     @State private var expanded: Set<String> = []
 
     var body: some View {
@@ -35,6 +38,7 @@ struct ProcessTableView: View {
                     .font(.metric)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityLabel(row.threads > 0 ? "\(row.threads) threads" : "Not available")
             }
             .width(min: 56, ideal: 64)
             .customizationID("threads")
@@ -59,11 +63,11 @@ struct ProcessTableView: View {
             ForEach(rows) { row in
                 if let children = row.children {
                     DisclosureTableRow(row, isExpanded: expansion(row.id)) {
-                        if expanded.contains(row.id) {
+                        if isOpen(row.id) {
                             ForEach(children) { child in
                                 if let grandchildren = child.children {
                                     DisclosureTableRow(child, isExpanded: expansion(child.id)) {
-                                        if expanded.contains(child.id) {
+                                        if isOpen(child.id) {
                                             ForEach(grandchildren) { TableRow($0) }
                                         }
                                     }
@@ -84,15 +88,30 @@ struct ProcessTableView: View {
         }
         .contextMenu(forSelectionType: TableRowItem.ID.self) { ids in
             RowMenu(rows: resolve(ids), actions: actions)
-        } primaryAction: { _ in
+        } primaryAction: { ids in
+            guard !ids.isEmpty else { return }
             onOpen()
         }
+        .onAppear(perform: restoreColumns)
+        .onChange(of: columnCustomization) { _, customization in
+            columnStorage = (try? JSONEncoder().encode(customization)) ?? Data()
+        }
+    }
+
+    // SceneStorage only survives with window restoration on, which macOS turns off by default, so column choices live in user defaults.
+    private func restoreColumns() {
+        guard let saved = try? JSONDecoder().decode(TableColumnCustomization<TableRowItem>.self, from: columnStorage) else { return }
+        columnCustomization = saved
+    }
+
+    private func isOpen(_ id: String) -> Bool {
+        isSearching || expanded.contains(id)
     }
 
     // Collapsed groups hand no children to the table, so SwiftUI only diffs the rows people can actually see.
     private func expansion(_ id: String) -> Binding<Bool> {
         Binding(
-            get: { expanded.contains(id) },
+            get: { isOpen(id) },
             set: { isOpen in
                 if isOpen { expanded.insert(id) } else { expanded.remove(id) }
             }
@@ -108,6 +127,7 @@ struct ProcessTableView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.horizontal, 6)
                     .help("macOS doesn't share this for system processes")
+                    .accessibilityLabel("Not available")
             } else {
                 HeatValue(column: column, value: row[keyPath: value], isApproximate: row.isApproximate && column == .memory)
             }
@@ -178,6 +198,7 @@ private struct NameCell: View {
                     .padding(.vertical, 1)
                     .background(.quaternary, in: Capsule())
                     .help("\(row.count) processes")
+                    .accessibilityLabel("\(row.count) processes")
             }
         }
         .help(row.process?.sample.path ?? row.group.bundlePath ?? row.title)
@@ -244,20 +265,22 @@ private struct RowMenu: View {
         if let row = rows.first {
             let group = row.group
             Section(group.name) {
-                Button("Quit \(group.name)", systemImage: ProcessAction.quit.symbol) { actions.request(.quit, on: group) }
-                Button("Force Quit \(group.name)", systemImage: ProcessAction.forceQuit.symbol) { actions.request(.forceQuit, on: group) }
+                groupButton(.quit, title: "Quit \(group.name)", group)
+                groupButton(.forceQuit, title: "Force Quit \(group.name)", group)
                 if group.isSuspended {
-                    Button("Resume", systemImage: ProcessAction.resume.symbol) { actions.request(.resume, on: group) }
+                    groupButton(.resume, title: "Resume", group)
                 } else {
-                    Button("Pause", systemImage: ProcessAction.suspend.symbol) { actions.request(.suspend, on: group) }
+                    groupButton(.suspend, title: "Pause", group)
                 }
             }
             if row.role == .process, let process = row.process, row.group.processes.count > 1 {
                 Section("This process (\(process.sample.pid))") {
-                    Button("Quit Process") { actions.perform(.quit, on: process.sample) }
-                    Button("Force Quit Process") { actions.perform(.forceQuit, on: process.sample) }
-                    Button(process.sample.isSuspended ? "Resume Process" : "Pause Process") {
-                        actions.perform(process.sample.isSuspended ? .resume : .suspend, on: process.sample)
+                    processButton(.quit, title: "Quit Process", process.sample, group: group)
+                    processButton(.forceQuit, title: "Force Quit Process", process.sample, group: group)
+                    if process.sample.isSuspended {
+                        processButton(.resume, title: "Resume Process", process.sample, group: group)
+                    } else {
+                        processButton(.suspend, title: "Pause Process", process.sample, group: group)
                     }
                 }
             }
@@ -266,6 +289,16 @@ private struct RowMenu: View {
             Button("Copy Details", systemImage: "doc.on.doc") { copy(row) }
             Button("Search the Web for \(row.title)", systemImage: "magnifyingglass") { searchOnline(row.title) }
         }
+    }
+
+    private func groupButton(_ action: ProcessAction, title: String, _ group: AppGroup) -> some View {
+        Button(title, systemImage: action.symbol) { actions.request(action, on: group) }
+            .disabled(!ProcessActions.canAct(on: group, action: action))
+    }
+
+    private func processButton(_ action: ProcessAction, title: String, _ sample: ProcessSample, group: AppGroup) -> some View {
+        Button(title) { actions.request(action, on: sample, groupName: group.name) }
+            .disabled(ProcessActions.isProtected(sample, for: action))
     }
 
     private func searchOnline(_ term: String) {

@@ -89,6 +89,18 @@ final class MonitorStore {
         min(Int(Series.window / interval.rawValue), Series.capacity)
     }
 
+    // Actions must target what is running now, even while per-app publishing is paused because no window is visible.
+    func liveGroup(id: String) -> AppGroup? {
+        (latestFrame?.groups ?? groups).first { $0.id == id }
+    }
+
+    func liveProcess(id: String) -> ProcessSample? {
+        for group in latestFrame?.groups ?? groups {
+            if let match = group.processes.first(where: { $0.id == id }) { return match.sample }
+        }
+        return nil
+    }
+
     func group(id: String?) -> AppGroup? {
         guard let id else { return nil }
         return groups.first { $0.id == id }

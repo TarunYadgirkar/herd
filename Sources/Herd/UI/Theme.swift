@@ -21,6 +21,8 @@ enum Theme {
     static let warning = Color(hex: 0xD08A1E)
     static let critical = Color(hex: 0xC8423C)
 
+    static let shadow = Color.black.opacity(0.15)
+
     static let netIn = Color(hex: 0x2F7D6D)
     static let netOut = Color(hex: 0x6E8FB8)
 
