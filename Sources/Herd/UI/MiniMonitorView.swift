@@ -13,7 +13,7 @@ struct MiniMonitorView: View {
                     Sparkline(values: store.systemHistory.cpu.values, ceiling: 1).frame(height: 18)
                 }
                 stat("Memory", value: Format.bytes(store.system.memoryUsed)) {
-                    StatePill(text: pressureTitle, color: Theme.pressureColor(store.system.pressure))
+                    PressureGauge(used: store.system.memoryUsed, total: store.system.memoryTotal, pressure: store.system.pressure)
                 }
                 if let power = store.system.power {
                     stat("Power", value: Format.watts(store.system.sensors?.systemWatts ?? power.packageWatts)) {
@@ -40,14 +40,6 @@ struct MiniMonitorView: View {
 
     private var topGroups: [AppGroup] {
         Array(store.groups.sorted { $0.metrics.cpu > $1.metrics.cpu }.prefix(Self.topCount))
-    }
-
-    private var pressureTitle: String {
-        switch store.system.pressure {
-        case .normal: "Normal"
-        case .warning: "Under pressure"
-        case .critical: "Critical"
-        }
     }
 
     private func stat<Detail: View>(_ title: String, value: String, @ViewBuilder detail: () -> Detail) -> some View {

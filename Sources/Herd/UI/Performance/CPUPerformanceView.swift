@@ -10,7 +10,7 @@ struct CPUPerformanceView: View {
         PerformanceHeader(
             title: "CPU",
             value: Format.percent(system.cpuTotal * 100),
-            caption: "User \(Format.percent(system.cpuUser * 100)) · System \(Format.percent(system.cpuSystem * 100))",
+            caption: Text("User \(Format.percent(system.cpuUser * 100)) · System \(Format.percent(system.cpuSystem * 100))"),
             stats: stats,
             range: context.range
         )
@@ -22,8 +22,7 @@ struct CPUPerformanceView: View {
             ]),
             unit: .fraction,
             context: context,
-            yDomain: 0...1,
-            help: "User is work done by apps. System is work done by macOS on their behalf."
+            yDomain: 0...1
         )
         CoreGrid(usage: system.perCoreUsage, history: cores, readings: system.power?.clusters)
     }
@@ -31,18 +30,10 @@ struct CPUPerformanceView: View {
     private var stats: [PerformanceStat] {
         var stats = [
             PerformanceStat(label: "Cores", value: "\(system.perCoreUsage.count)"),
-            PerformanceStat(
-                label: "Load average",
-                value: PerformanceFormat.load(system.loadAverage),
-                help: "Average number of tasks waiting to run over the last 1, 5 and 15 minutes."
-            ),
+            PerformanceStat(label: "Load", value: PerformanceFormat.load(system.loadAverage), help: "1, 5, 15 min"),
         ]
         if let kernel = system.kernelCPUPercent {
-            stats.append(PerformanceStat(
-                label: "kernel_task",
-                value: Format.percent(kernel),
-                help: "macOS raises kernel_task to keep the CPU cool when your Mac is hot."
-            ))
+            stats.append(PerformanceStat(label: "kernel_task", value: Format.percent(kernel)))
         }
         stats.append(PerformanceStat(label: "Uptime", value: Format.duration(system.uptime)))
         return stats

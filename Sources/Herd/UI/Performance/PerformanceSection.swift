@@ -34,7 +34,7 @@ enum PerformanceSection: String, CaseIterable, Identifiable {
     func summary(_ system: SystemSnapshot) -> String {
         switch self {
         case .cpu: Format.percent(system.cpuTotal * 100)
-        case .memory: "\(PerformanceFormat.gigabytes(system.memoryUsed)) of \(PerformanceFormat.gigabytes(system.memoryTotal, decimals: 0)) GB"
+        case .memory: "\(PerformanceFormat.gigabytes(system.memoryUsed)) GB"
         case .gpu: system.gpuUtilization.map { Format.percent($0 * 100) } ?? PerformanceFormat.missing
         case .network: Format.rate(system.netInBps + system.netOutBps)
         case .disk: Format.rate(system.diskReadBps + system.diskWriteBps)

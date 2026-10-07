@@ -36,12 +36,36 @@ private struct SectionHeader: View {
 
 private struct PlainNote: View {
     let text: String
+    var symbol: String?
 
     var body: some View {
-        Text(text)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+        Group {
+            if let symbol {
+                Label(text, systemImage: symbol)
+            } else {
+                Text(text)
+            }
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+    }
+}
+
+private struct HiddenNote: View {
+    var body: some View {
+        PlainNote(text: "Hidden by macOS", symbol: "lock.fill")
+    }
+}
+
+private struct StatusGlyph: View {
+    let symbol: String
+    let color: Color
+    let label: String
+
+    var body: some View {
+        Image(systemName: symbol)
+            .foregroundStyle(color)
+            .accessibilityLabel(label)
     }
 }
 
@@ -55,34 +79,35 @@ private struct GeneralSection: View {
 
     var body: some View {
         Section {
-            LabeledContent("Launched by") {
+            LabeledContent("Parent") {
                 Text(details.parentChain.map { "\($0.name) (\($0.pid))" }.joined(separator: " › "))
                     .monospacedDigit()
                     .multilineTextAlignment(.trailing)
                     .textSelection(.enabled)
             }
-            if let responsible { LabeledContent("Responsible process", value: responsible) }
+            if let responsible { LabeledContent("Responsible", value: responsible) }
             if let started = details.started {
                 LabeledContent("Started") {
-                    Text("\(started.formatted(date: .abbreviated, time: .shortened)), running for \(Format.duration(Date().timeIntervalSince(started)))")
-                        .monospacedDigit()
+                    HStack(spacing: Theme.itemSpacing) {
+                        Text(started.formatted(date: .abbreviated, time: .shortened))
+                        Label(Format.duration(Date().timeIntervalSince(started)), systemImage: "timer")
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("running for \(Format.duration(Date().timeIntervalSince(started)))")
+                    }
+                    .monospacedDigit()
                 }
             }
             if let cpuTime = details.cpuTime {
                 LabeledContent("CPU time") { Text(Self.cpuTimeText(cpuTime)).monospacedDigit() }
             }
-            LabeledContent("Priority", value: priorityText)
+            LabeledContent("Priority") { priority }
             if let directory = details.workingDirectory {
-                LabeledContent("Working folder") {
+                LabeledContent("Folder") {
                     Text(ScriptLabel.abbreviate(directory)).lineLimit(1).truncationMode(.middle).textSelection(.enabled).help(directory)
                 }
             }
-        } header: {
-            SectionHeader(title: "General")
         } footer: {
-            if isPrivate {
-                PlainNote(text: "macOS keeps CPU time, open files, and the environment of processes owned by the system or another user private.")
-            }
+            if isPrivate { HiddenNote() }
         }
     }
 
@@ -92,12 +117,17 @@ private struct GeneralSection: View {
         return name.map { "\($0) (\(sample.responsiblePid))" }
     }
 
-    private var priorityText: String {
-        if details.isEfficiencyMode == true { return "Efficiency mode" }
-        guard let nice = details.nice else { return "Normal" }
-        if nice > 0 { return "Low (nice \(nice))" }
-        if nice < 0 { return "High (nice \(nice))" }
-        return "Normal"
+    @ViewBuilder
+    private var priority: some View {
+        if details.isEfficiencyMode == true {
+            Label("Efficiency", systemImage: "leaf").foregroundStyle(Theme.accent)
+        } else if let nice = details.nice, nice != 0 {
+            Label("nice \(nice)", systemImage: nice > 0 ? "arrow.down" : "arrow.up")
+                .monospacedDigit()
+                .accessibilityLabel("\(nice > 0 ? "Low" : "High"), nice \(nice)")
+        } else {
+            Text("Normal")
+        }
     }
 
     private static let secondsPerMinute: TimeInterval = 60
@@ -119,21 +149,29 @@ private struct SignatureSection: View {
     var body: some View {
         Section {
             if let signature {
-                LabeledContent("Status") { pill(signature) }
+                LabeledContent("Signature") { status(signature) }
                 if signature.isSigned { signedRows(signature) }
             } else {
-                PlainNote(text: "Herd couldn't read the signature because the executable is missing or unreadable.")
+                LabeledContent("Signature") {
+                    StatusGlyph(symbol: "questionmark.circle", color: .secondary, label: "Unreadable")
+                        .help("Executable missing or unreadable")
+                }
             }
             if let bundleIdentifier { LabeledContent("Bundle ID") { Text(bundleIdentifier).textSelection(.enabled) } }
             if let bundleVersion { LabeledContent("Version") { Text(bundleVersion).monospacedDigit().textSelection(.enabled) } }
-        } header: {
-            SectionHeader(title: "Signature")
         }
     }
 
     @ViewBuilder
     private func signedRows(_ signature: ProcessDetails.Signature) -> some View {
-        LabeledContent("Seal", value: signature.isValid ? "Intact" : "Broken. The code changed after it was signed.")
+        LabeledContent("Seal") {
+            if signature.isValid {
+                StatusGlyph(symbol: "checkmark.seal.fill", color: Theme.good, label: "Intact")
+            } else {
+                StatusGlyph(symbol: "xmark.seal.fill", color: Theme.critical, label: "Broken, code changed after signing")
+                    .help("Code changed after signing")
+            }
+        }
         if let identifier = signature.identifier {
             LabeledContent("Identifier") { Text(identifier).textSelection(.enabled) }
         }
@@ -141,10 +179,14 @@ private struct SignatureSection: View {
             LabeledContent("Team ID") { Text(teamID).font(.metric).textSelection(.enabled) }
         }
         if let notarized = signature.isNotarizedHint {
-            LabeledContent("Notarized", value: notarized ? "Yes, Apple checked it for malware" : "No ticket found")
+            LabeledContent("Notarized") {
+                notarized
+                    ? StatusGlyph(symbol: "checkmark.circle.fill", color: Theme.good, label: "Yes")
+                    : StatusGlyph(symbol: "xmark.circle", color: .secondary, label: "No ticket found")
+            }
         }
         if !signature.authority.isEmpty {
-            LabeledContent("Certificate chain") {
+            LabeledContent("Certificates") {
                 VStack(alignment: .trailing, spacing: 2) {
                     ForEach(signature.authority, id: \.self) { Text($0) }
                 }
@@ -153,12 +195,20 @@ private struct SignatureSection: View {
         }
     }
 
-    private func pill(_ signature: ProcessDetails.Signature) -> StatePill {
-        if !signature.isSigned { return StatePill(text: "Not signed", color: Theme.warning) }
-        if !signature.isValid { return StatePill(text: "Signature broken", color: Theme.critical) }
-        if signature.isApple { return StatePill(text: "Signed by Apple", color: Theme.good) }
-        if signature.isAdHoc { return StatePill(text: "Ad-hoc signed", color: Theme.neutral) }
-        return StatePill(text: "Signed by \(signature.signerName ?? "a developer")", color: Theme.accent)
+    private func status(_ signature: ProcessDetails.Signature) -> some View {
+        let (symbol, color, text, label) = statusParts(signature)
+        return Label(text, systemImage: symbol)
+            .foregroundStyle(color)
+            .accessibilityLabel(label)
+    }
+
+    private func statusParts(_ signature: ProcessDetails.Signature) -> (String, Color, String, String) {
+        if !signature.isSigned { return ("xmark.seal", Theme.warning, "None", "Not signed") }
+        if !signature.isValid { return ("exclamationmark.triangle.fill", Theme.critical, "Broken", "Signature broken") }
+        if signature.isApple { return ("apple.logo", Theme.good, "Apple", "Signed by Apple") }
+        if signature.isAdHoc { return ("seal", Theme.neutral, "Ad hoc", "Ad-hoc signed") }
+        let signer = signature.signerName ?? "Developer"
+        return ("checkmark.seal.fill", Theme.accent, signer, "Signed by \(signer)")
     }
 }
 
@@ -169,7 +219,7 @@ private struct NetworkSection: View {
     var body: some View {
         Section {
             if !listening.isEmpty {
-                LabeledContent("Listening on") {
+                LabeledContent("Listening") {
                     HStack(spacing: 4) {
                         ForEach(listening, id: \.self) { endpoint in
                             Text(endpoint)
@@ -183,7 +233,7 @@ private struct NetworkSection: View {
                 }
             }
             if connections.isEmpty {
-                PlainNote(text: isPrivate ? "macOS doesn't share the connections of system processes." : "No open network connections.")
+                if isPrivate { HiddenNote() } else { PlainNote(text: "None") }
             } else {
                 connectionGrid
             }
@@ -194,8 +244,7 @@ private struct NetworkSection: View {
 
     private var countText: String {
         let count = connections.count
-        let text = "\(count) \(count == 1 ? "connection" : "connections")"
-        return count >= ProcessDetails.maxConnections ? "First \(text)" : text
+        return count >= ProcessDetails.maxConnections ? "\(count)+" : "\(count)"
     }
 
     private var listening: [String] {
@@ -244,9 +293,9 @@ private struct OpenFilesSection: View {
     var body: some View {
         Section {
             if files.isEmpty {
-                PlainNote(text: isPrivate ? "macOS doesn't share the open files of system processes." : "No open files.")
+                if isPrivate { HiddenNote() } else { PlainNote(text: "None") }
             } else {
-                TextField("Filter by path", text: $query, prompt: Text("Filter by path"))
+                TextField("Filter", text: $query, prompt: Text("Filter"))
                     .textFieldStyle(.roundedBorder)
                     .labelsHidden()
                 fileList
@@ -257,7 +306,7 @@ private struct OpenFilesSection: View {
     }
 
     private var countText: String {
-        total > files.count ? "First \(files.count) of \(total)" : "\(total)"
+        total > files.count ? "\(files.count) of \(total)" : "\(total)"
     }
 
     private var filtered: [ProcessDetails.OpenFile] {
@@ -271,9 +320,9 @@ private struct OpenFilesSection: View {
         let matches = filtered
         if matches.isEmpty {
             HStack {
-                PlainNote(text: "No open files match “\(query)”.")
+                PlainNote(text: "No matches", symbol: "magnifyingglass")
                 Spacer()
-                Button("Clear Filter") { query = "" }.controlSize(.small)
+                Button("Clear") { query = "" }.controlSize(.small)
             }
         } else {
             ForEach(matches) { file in
@@ -282,7 +331,7 @@ private struct OpenFilesSection: View {
                         .font(.metricSmall)
                         .foregroundStyle(.tertiary)
                         .frame(minWidth: 28, alignment: .trailing)
-                        .help("File descriptor \(file.id)")
+                        .help("File descriptor")
                     Text(ScriptLabel.abbreviate(file.path))
                         .font(.callout)
                         .lineLimit(1)
@@ -304,14 +353,12 @@ private struct EnvironmentSection: View {
         Section {
             if let environment, !environment.isEmpty {
                 DisclosureGroup(isExpanded: $isExpanded) {
-                    MonospacedBlock(text: environment.joined(separator: "\n"), copyTitle: "Copy Environment")
+                    MonospacedBlock(text: environment.joined(separator: "\n"))
                 } label: {
-                    Text("Show \(environment.count) variables").monospacedDigit()
+                    Text("\(environment.count) variables").monospacedDigit()
                 }
-            } else if environment != nil {
-                PlainNote(text: "macOS keeps this process's environment private. Apps with the hardened runtime and built-in macOS tools hide it.")
             } else {
-                PlainNote(text: "Only available for your own processes.")
+                HiddenNote()
             }
         } header: {
             SectionHeader(title: "Environment")
@@ -325,7 +372,7 @@ private struct CommandLineSection: View {
 
     var body: some View {
         Section {
-            MonospacedBlock(text: commandLine, copyTitle: "Copy Command Line")
+            MonospacedBlock(text: commandLine)
         } header: {
             SectionHeader(title: "Command line", detail: arguments.count > 1 ? "\(arguments.count) arguments" : nil)
         }
@@ -344,7 +391,6 @@ private struct CommandLineSection: View {
 
 private struct MonospacedBlock: View {
     let text: String
-    let copyTitle: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemSpacing) {
@@ -353,7 +399,7 @@ private struct MonospacedBlock: View {
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button(copyTitle, systemImage: "doc.on.doc") {
+            Button("Copy", systemImage: "doc.on.doc") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
             }

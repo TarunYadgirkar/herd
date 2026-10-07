@@ -9,7 +9,7 @@ struct CoreGrid: View {
         let clusters = CPUTopology.clusters(coreCount: usage.count)
         let frequencies = readings.map { CPUTopology.frequencies(for: clusters, readings: $0) } ?? [:]
         let series = coreSeries
-        PerformanceCard(title: "Cores", help: "Each tile is one CPU core, grouped by cluster.") {
+        PerformanceCard(title: "Cores") {
             VStack(alignment: .leading, spacing: Theme.groupSpacing) {
                 ForEach(clusters) { cluster in
                     ClusterBlock(
@@ -42,12 +42,11 @@ private struct ClusterBlock: View {
         VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             HStack(spacing: Theme.itemSpacing) {
                 Text(cluster.name).font(.subheadline.weight(.semibold))
-                Text("\(cluster.cores.count) cores").font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Text(frequency.map(PerformanceFormat.megahertz) ?? PerformanceFormat.missing)
                     .font(.metricSmall)
                     .foregroundStyle(.secondary)
-                    .help("Current clock speed of this cluster")
+                    .accessibilityLabel("\(cluster.name) clock speed")
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.tileWidth), spacing: Theme.itemSpacing)], spacing: Theme.itemSpacing) {
                 ForEach(Array(cluster.cores), id: \.self) { core in
@@ -71,7 +70,7 @@ private struct CoreTile: View {
         let percent = Format.percent(usage * 100)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                Text("Core \(index + 1)").font(.caption).foregroundStyle(.secondary)
+                Text("\(index + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Text(percent).font(.metricSmall)
             }

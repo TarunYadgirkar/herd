@@ -59,10 +59,9 @@ struct ContentView: View {
             InspectorView(groupID: inspectedGroupID, processID: selectedProcessID)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 460)
         }
-        .searchable(text: $query, placement: .toolbar, prompt: "Search apps, processes, PIDs")
+        .searchable(text: $query, placement: .toolbar)
         .toolbar { toolbar }
         .navigationTitle("Herd")
-        .navigationSubtitle(subtitle)
         .onChange(of: sortOrder) { _, _ in hold.release() }
         .onChange(of: store.requestedSelection, initial: true) { _, requested in
             guard let requested else { return }
@@ -85,28 +84,27 @@ struct ContentView: View {
                 ForEach(Scope.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
-            .help("Filter by kind of process")
         }
         ToolbarItemGroup(placement: .primaryAction) {
             Toggle(isOn: $isTree) {
                 Label("Show as Tree", systemImage: "list.bullet.indent")
             }
             .keyboardShortcut("t", modifiers: .command)
-            .help(isTree ? "Group processes by app (⌘T)" : "Show which process started which (⌘T)")
+            .help("Tree (⌘T)")
 
             Button {
                 store.isPaused.toggle()
             } label: {
                 Label(store.isPaused ? "Resume Updates" : "Pause Updates", systemImage: store.isPaused ? "play.fill" : "pause.fill")
             }
-            .help(store.isPaused ? "Resume live updates" : "Freeze the numbers so you can read them")
+            .help(store.isPaused ? "Resume" : "Pause")
 
             Button {
                 showInspector.toggle()
             } label: {
                 Label("Details", systemImage: "sidebar.right")
             }
-            .help(showInspector ? "Hide the details panel" : "Show details for the selected app")
+            .help("Details")
         }
     }
 
@@ -157,12 +155,6 @@ struct ContentView: View {
     private var selectedProcessID: String? {
         guard let id = selection, store.group(id: id) == nil, !id.contains("/") else { return nil }
         return id
-    }
-
-    private var subtitle: String {
-        let apps = store.groups.filter { $0.kind == .apps }.count
-        let paused = store.isPaused ? " · Paused" : ""
-        return "\(apps) apps · \(store.processCount) processes · Herd uses \(Format.percent(store.ownCPU)) CPU\(paused)"
     }
 }
 

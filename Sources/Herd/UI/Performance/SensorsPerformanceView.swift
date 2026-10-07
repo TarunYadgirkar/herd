@@ -8,11 +8,11 @@ struct SensorsPerformanceView: View {
             PerformanceHeader(
                 title: "Sensors",
                 value: sensors.cpuCelsius.map(PerformanceFormat.celsius) ?? PerformanceFormat.missing,
-                caption: "CPU temperature",
+                caption: Text("CPU"),
                 stats: stats(sensors),
                 range: context.range
             ) {
-                if let pill = ThermalCopy.pill(context.system.thermal) { StatePill(text: pill.title, color: pill.color) }
+                ThermalBadge(thermal: context.system.thermal)
             }
             PerformanceChart(
                 title: "Temperature",
@@ -35,31 +35,46 @@ struct SensorsPerformanceView: View {
             }
             SensorListCard(sensors: sensors)
         } else {
-            SectionMessage(title: "Sensors", symbol: PerformanceSection.sensors.symbol, message: PerformanceCopy.unavailable)
+            SectionMessage(title: PerformanceCopy.unavailable, symbol: PerformanceSection.sensors.symbol)
         }
     }
 
     private func stats(_ sensors: SensorReading) -> [PerformanceStat] {
         let readings: [(String, Double?)] = [
-            ("CPU hottest", sensors.cpuMaxCelsius),
+            ("CPU max", sensors.cpuMaxCelsius),
             ("GPU", sensors.gpuCelsius),
             ("SSD", sensors.ssdCelsius),
             ("Battery", sensors.batteryCelsius),
         ]
         let temperatures = readings.compactMap { label, value in value.map { PerformanceStat(label: label, value: PerformanceFormat.celsius($0)) } }
         let fans = sensors.fans.map { PerformanceStat(label: $0.name, value: PerformanceFormat.rpm($0.rpm)) }
-        let noFans = sensors.fans.isEmpty ? [PerformanceStat(label: "Fans", value: "None", help: "This Mac cools itself without fans.")] : []
+        let noFans = sensors.fans.isEmpty ? [PerformanceStat(label: "Fans", value: "None")] : []
         return temperatures + fans + noFans
     }
 }
 
-enum ThermalCopy {
-    static func pill(_ thermal: ProcessInfo.ThermalState) -> (title: String, color: Color)? {
+struct ThermalBadge: View {
+    let thermal: ProcessInfo.ThermalState
+
+    var body: some View {
+        if let style {
+            HStack(spacing: 3) {
+                Image(systemName: style.symbol)
+                if thermal == .critical { Image(systemName: "tortoise.fill") }
+            }
+            .font(.headline)
+            .foregroundStyle(style.color)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(style.label)
+        }
+    }
+
+    private var style: (symbol: String, color: Color, label: String)? {
         switch thermal {
         case .nominal: nil
-        case .fair: ("Warm", Theme.warning)
-        case .serious: ("Hot", Theme.critical)
-        case .critical: ("Throttling", Theme.critical)
+        case .fair: ("thermometer.medium", Theme.warning, "Warm")
+        case .serious: ("thermometer.high", Theme.critical, "Hot")
+        case .critical: ("thermometer.high", Theme.critical, "Hot, throttling")
         @unknown default: nil
         }
     }
@@ -89,7 +104,7 @@ private struct SensorListCard: View {
     private static let columnWidth: CGFloat = 220
 
     var body: some View {
-        PerformanceCard(title: "All sensors", help: "Every temperature sensor macOS reports, updated live.") {
+        PerformanceCard(title: "All sensors") {
             if sensors.temperatures.isEmpty {
                 ChartMessage(text: PerformanceCopy.unavailable, height: 60)
             } else {

@@ -10,19 +10,21 @@ struct MemoryPerformanceView: View {
         PerformanceHeader(
             title: "Memory",
             value: Format.bytes(system.memoryUsed),
-            caption: "of \(PerformanceFormat.gigabytes(system.memoryTotal, decimals: 0)) GB in use",
+            caption: Text("of \(PerformanceFormat.gigabytes(system.memoryTotal, decimals: 0)) GB"),
             stats: stats,
             range: context.range
         ) {
-            StatePill(text: MemoryPressureCopy.title(system.pressure), color: Theme.pressureColor(system.pressure))
+            Image(systemName: MemoryPressureCopy.symbol(system.pressure))
+                .font(.headline)
+                .foregroundStyle(Theme.pressureColor(system.pressure))
+                .accessibilityLabel("Memory pressure \(MemoryPressureCopy.title(system.pressure))")
         }
         PerformanceChart(
             title: "Memory in use",
             series: memorySeries,
             unit: .bytes,
             context: context,
-            yDomain: 0...Double(max(system.memoryTotal, 1)),
-            help: "Cached files are kept for speed and freed first when apps need room."
+            yDomain: 0...Double(max(system.memoryTotal, 1))
         )
         PressureCard(context: context)
         PerformanceChart(
@@ -30,8 +32,7 @@ struct MemoryPerformanceView: View {
             series: [ChartSeries(name: "Swap", color: ChartPalette.swap, values: context.values { $0.swapUsed })],
             unit: .bytes,
             context: context,
-            height: 160,
-            help: "Swap is memory moved to disk. It is much slower than real memory."
+            height: 160
         )
     }
 
@@ -43,7 +44,7 @@ struct MemoryPerformanceView: View {
             ChartLayer(name: "Compressed", color: ChartPalette.compressedMemory, values: points.map(\.compressedMemory)),
         ])
         let cached = ChartSeries(
-            name: "Cached files", color: ChartPalette.cachedFiles, values: points.map(\.cachedFiles),
+            name: "Cached", color: ChartPalette.cachedFiles, values: points.map(\.cachedFiles),
             baseline: points.map { $0.appMemory + $0.wiredMemory + $0.compressedMemory },
             fill: .solid(opacity: ChartPalette.bandOpacity), lineWidth: 0
         )
@@ -53,11 +54,11 @@ struct MemoryPerformanceView: View {
 
     private var stats: [PerformanceStat] {
         [
-            PerformanceStat(label: "App memory", value: Format.bytes(system.appMemory), help: "Used by open apps and their helpers."),
-            PerformanceStat(label: "Wired", value: Format.bytes(system.wiredMemory), help: "Reserved by macOS itself. It can't be freed."),
-            PerformanceStat(label: "Compressed", value: Format.bytes(system.compressedMemory), help: "Squeezed to make room. A lot of it means memory is tight."),
-            PerformanceStat(label: "Cached files", value: Format.bytes(system.cachedFiles), help: "Recently used files kept for speed."),
-            PerformanceStat(label: "Swap used", value: swapValue),
+            PerformanceStat(label: "App", value: Format.bytes(system.appMemory)),
+            PerformanceStat(label: "Wired", value: Format.bytes(system.wiredMemory), help: "Can't be freed"),
+            PerformanceStat(label: "Compressed", value: Format.bytes(system.compressedMemory)),
+            PerformanceStat(label: "Cached", value: Format.bytes(system.cachedFiles), help: "Freed first"),
+            PerformanceStat(label: "Swap", value: swapValue),
         ]
     }
 
@@ -71,16 +72,16 @@ enum MemoryPressureCopy {
     static func title(_ pressure: MemoryPressure) -> String {
         switch pressure {
         case .normal: "Normal"
-        case .warning: "Under pressure"
+        case .warning: "High"
         case .critical: "Critical"
         }
     }
 
-    static func explanation(_ pressure: MemoryPressure) -> String {
+    static func symbol(_ pressure: MemoryPressure) -> String {
         switch pressure {
-        case .normal: "Memory pressure is normal. Your Mac has room to open more apps."
-        case .warning: "Memory is getting tight. macOS is compressing memory and may start using swap, which slows things down."
-        case .critical: "Memory is very tight. Quit apps you aren't using to speed your Mac back up."
+        case .normal: "gauge.with.dots.needle.33percent"
+        case .warning: "gauge.with.dots.needle.67percent"
+        case .critical: "gauge.with.dots.needle.100percent"
         }
     }
 }
@@ -99,18 +100,12 @@ private struct PressureCard: View {
     private static let stripHeight: CGFloat = 14
 
     var body: some View {
-        PerformanceCard(title: "Memory pressure", help: "How hard macOS is working to find free memory.") {
+        PerformanceCard(title: "Memory pressure") {
             ChartLegend(items: [MemoryPressure.normal, .warning, .critical].map {
                 LegendItem(name: MemoryPressureCopy.title($0), color: Theme.pressureColor($0))
             })
         } content: {
-            VStack(alignment: .leading, spacing: Theme.itemSpacing) {
-                strip
-                Text(MemoryPressureCopy.explanation(context.system.pressure))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            strip
         }
     }
 
@@ -162,6 +157,6 @@ private struct PressureCard: View {
     private func accessibilitySummary(_ segments: [PressureSegment]) -> String {
         let tight = segments.filter { $0.pressure != .normal }.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
         guard tight > 0 else { return "Normal the whole time" }
-        return "Under pressure for \(Format.duration(tight)). Now \(MemoryPressureCopy.title(context.system.pressure))"
+        return "High for \(Format.duration(tight)). Now \(MemoryPressureCopy.title(context.system.pressure))"
     }
 }

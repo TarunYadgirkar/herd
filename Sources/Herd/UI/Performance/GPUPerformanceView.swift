@@ -10,7 +10,6 @@ struct GPUPerformanceView: View {
             PerformanceHeader(
                 title: "GPU",
                 value: Format.percent(utilization * 100),
-                caption: "Graphics processor in use",
                 stats: stats,
                 range: context.range
             )
@@ -31,7 +30,7 @@ struct GPUPerformanceView: View {
                 )
             }
         } else {
-            SectionMessage(title: "GPU", symbol: PerformanceSection.gpu.symbol, message: PerformanceCopy.unavailable)
+            SectionMessage(title: PerformanceCopy.unavailable, symbol: PerformanceSection.gpu.symbol)
         }
     }
 
@@ -40,8 +39,8 @@ struct GPUPerformanceView: View {
             return [PerformanceStat(label: "Peak", value: context.peak(\.gpu).map { Format.percent($0 * 100) } ?? PerformanceFormat.missing)]
         }
         return [
-            PerformanceStat(label: "Frequency", value: PerformanceFormat.megahertz(power.gpuFrequencyMHz), help: "Current GPU clock speed"),
-            PerformanceStat(label: "Top speed", value: PerformanceFormat.megahertz(power.gpuMaxFrequencyMHz)),
+            PerformanceStat(label: "Frequency", value: PerformanceFormat.megahertz(power.gpuFrequencyMHz)),
+            PerformanceStat(label: "Max", value: PerformanceFormat.megahertz(power.gpuMaxFrequencyMHz)),
             PerformanceStat(label: "Power", value: Format.watts(power.gpuWatts)),
             PerformanceStat(label: "Peak", value: context.peak(\.gpu).map { Format.percent($0 * 100) } ?? PerformanceFormat.missing),
         ]

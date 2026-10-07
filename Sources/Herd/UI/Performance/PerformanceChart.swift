@@ -9,10 +9,9 @@ struct PerformanceChart: View {
     var yDomain: ClosedRange<Double>?
     var includesZero = true
     var height: CGFloat = 200
-    var help: String?
 
     var body: some View {
-        ChartCard(title: title, help: help, legend: series.count > 1 ? series.map(LegendItem.init) : []) {
+        ChartCard(title: title, legend: series.count > 1 ? series.map(LegendItem.init) : []) {
             content
         }
     }

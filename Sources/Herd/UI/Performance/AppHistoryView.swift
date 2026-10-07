@@ -12,11 +12,7 @@ struct AppHistoryView: View {
                 .padding(.vertical, Theme.itemSpacing + 4)
             Divider()
             if usage.isEmpty {
-                SectionMessage(
-                    title: "No app history yet",
-                    symbol: "clock.arrow.circlepath",
-                    message: "Herd records what each app uses while it runs. Check back in a few minutes."
-                )
+                SectionMessage(title: "No history yet", symbol: "clock.arrow.circlepath")
                 .frame(maxHeight: .infinity)
             } else {
                 AppUsageTable(rows: usage.sorted(using: sortOrder), sortOrder: $sortOrder)
@@ -28,11 +24,9 @@ struct AppHistoryView: View {
         let total = usage.reduce(0) { $0 + $1.energyWattHours }
         return HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
             Text("App history").font(.title2.weight(.semibold))
-            Text("Since midnight").foregroundStyle(.secondary)
             Spacer(minLength: Theme.groupSpacing)
-            Text("\(PerformanceFormat.wattHours(total)) used")
+            Text("\(PerformanceFormat.wattHours(total)) today")
                 .font(.displaySmall)
-                .help("Energy all apps have used since midnight")
         }
         .accessibilityElement(children: .combine)
     }
