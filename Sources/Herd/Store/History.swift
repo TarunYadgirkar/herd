@@ -26,6 +26,7 @@ struct Series: Sendable, Equatable {
 struct GroupHistory: Sendable, Equatable {
     var cpu = Series()
     var memory = Series()
+    var impact = Series()
     var energy = Series()
     var network = Series()
     var disk = Series()
@@ -35,6 +36,7 @@ struct GroupHistory: Sendable, Equatable {
         GroupHistory(
             cpu: cpu.appending(metrics.cpu),
             memory: memory.appending(Double(metrics.memory)),
+            impact: impact.appending(metrics.energyImpact),
             energy: energy.appending(metrics.energy),
             network: network.appending(metrics.network),
             disk: disk.appending(metrics.disk),
@@ -46,6 +48,7 @@ struct GroupHistory: Sendable, Equatable {
         switch column {
         case .cpu: cpu
         case .memory: memory
+        case .impact: impact
         case .energy: energy
         case .network: network
         case .disk: disk

@@ -50,6 +50,7 @@ enum TreeRowBuilder {
             isApproximate: sample.isApproximate,
             isSuspended: sample.isSuspended,
             isUnavailable: sample.isUnavailable,
+            lacksCounters: !sample.hasDetailedCounters,
             children: kids.isEmpty ? nil : kids
         )
     }

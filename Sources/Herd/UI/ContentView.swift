@@ -137,6 +137,7 @@ struct ContentView: View {
         guard let first = sortOrder.first else { return .cpu }
         switch first.keyPath {
         case \TableRowItem.memory: return .memory
+        case \TableRowItem.impact: return .impact
         case \TableRowItem.energy: return .energy
         case \TableRowItem.gpu: return .gpu
         case \TableRowItem.network: return .network

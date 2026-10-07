@@ -23,6 +23,7 @@ struct ProcessSample: Sendable, Identifiable, Hashable {
     var isApproximate: Bool
     var isSuspended: Bool
     var isUnavailable: Bool = false
+    var hasDetailedCounters: Bool = true
     var energyImpact: Double = 0
     var idleWakeups: Double = 0
     var cpuSeconds: Double = 0

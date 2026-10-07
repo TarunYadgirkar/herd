@@ -80,12 +80,15 @@ struct ProcessTableView: View {
         .customizationID("name")
         .disabledCustomizationBehavior(.visibility)
 
-        metricColumn(.cpu, value: \.cpu)
-        metricColumn(.memory, value: \.memory)
-        metricColumn(.energy, value: \.energy)
-        metricColumn(.gpu, value: \.gpu)
-        metricColumn(.network, value: \.network)
-        metricColumn(.disk, value: \.disk)
+        Group {
+            metricColumn(.cpu, value: \.cpu)
+            metricColumn(.memory, value: \.memory)
+            metricColumn(.impact, value: \.impact)
+            metricColumn(.energy, value: \.energy)
+            metricColumn(.gpu, value: \.gpu)
+            metricColumn(.network, value: \.network)
+            metricColumn(.disk, value: \.disk)
+        }
 
         TableColumn("Threads", value: \.threads) { row in
             Text(row.threads > 0 ? "\(row.threads)" : "–")
@@ -146,16 +149,16 @@ struct ProcessTableView: View {
                     .help("macOS doesn't share this for system processes")
                     .accessibilityLabel("Not available")
             } else {
-                HeatValue(column: column, value: row[keyPath: value], isApproximate: row.isApproximate && column == .memory)
+                HeatValue(column: column, value: row[keyPath: value])
             }
         }
-        .width(min: 64, ideal: column == .network || column == .disk ? 84 : 72)
+        .width(min: 64, ideal: column == .network || column == .disk || column == .impact ? 84 : 72)
         .customizationID(column.rawValue)
         .defaultVisibility(column == .disk ? .hidden : .automatic)
     }
 
     private func isUnavailable(_ row: TableRowItem, _ column: MetricColumn) -> Bool {
-        row.isUnavailable || (row.isApproximate && (column == .energy || column == .disk))
+        row.isUnavailable || (row.lacksCounters && (column == .energy || column == .disk))
     }
 
     private func resolve(_ ids: Set<TableRowItem.ID>) -> [TableRowItem] {

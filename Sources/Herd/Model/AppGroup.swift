@@ -25,6 +25,8 @@ struct Metrics: Sendable, Equatable {
     var netIn: Double = 0
     var netOut: Double = 0
     var threads: Int = 0
+    var energyImpact: Double = 0
+    var idleWakeups: Double = 0
 
     var disk: Double { diskRead + diskWrite }
     var network: Double { netIn + netOut }
@@ -41,6 +43,8 @@ struct Metrics: Sendable, Equatable {
         netIn = sample.netInBps
         netOut = sample.netOutBps
         threads = sample.threads
+        energyImpact = sample.energyImpact
+        idleWakeups = sample.idleWakeups
     }
 
     static func + (lhs: Metrics, rhs: Metrics) -> Metrics {
@@ -54,6 +58,8 @@ struct Metrics: Sendable, Equatable {
         sum.netIn = lhs.netIn + rhs.netIn
         sum.netOut = lhs.netOut + rhs.netOut
         sum.threads = lhs.threads + rhs.threads
+        sum.energyImpact = lhs.energyImpact + rhs.energyImpact
+        sum.idleWakeups = lhs.idleWakeups + rhs.idleWakeups
         return sum
     }
 }

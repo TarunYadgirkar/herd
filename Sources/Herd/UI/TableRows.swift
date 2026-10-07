@@ -14,6 +14,7 @@ struct TableRowItem: Identifiable, Sendable, Equatable {
     let isApproximate: Bool
     let isSuspended: Bool
     var isUnavailable = false
+    var lacksCounters = false
     var children: [TableRowItem]?
 
     // Rows compare by what they display, so the table skips re-measuring the many idle rows whose numbers didn't visibly change.
@@ -37,9 +38,9 @@ struct TableRowItem: Identifiable, Sendable, Equatable {
             title: title,
             subtitle: subtitle,
             count: count,
-            flags: [isApproximate, isSuspended, isUnavailable],
+            flags: [isApproximate, isSuspended, isUnavailable, lacksCounters],
             values: [
-                Int64(metrics.cpu * 10), Int64(metrics.memory >> 20), Int64(metrics.energy * 100),
+                Int64(metrics.cpu * 10), Int64(metrics.memory >> 20), Int64(metrics.energy * 100), Int64(metrics.energyImpact * 10),
                 Int64(metrics.gpu * 10), Int64(metrics.network / 102.4), Int64(metrics.disk / 102.4), Int64(metrics.threads),
             ],
             ports: samples.flatMap(\.listeningPorts),
@@ -49,6 +50,7 @@ struct TableRowItem: Identifiable, Sendable, Equatable {
 
     var cpu: Double { metrics.cpu }
     var memory: Double { Double(metrics.memory) }
+    var impact: Double { metrics.energyImpact }
     var energy: Double { metrics.energy }
     var gpu: Double { metrics.gpu }
     var network: Double { metrics.network }
@@ -84,6 +86,7 @@ enum TableRowBuilder {
             isApproximate: members.allSatisfy(\.sample.isApproximate),
             isSuspended: groupMatches ? group.isSuspended : members.allSatisfy(\.sample.isSuspended),
             isUnavailable: members.allSatisfy(\.sample.isUnavailable),
+            lacksCounters: members.allSatisfy { !$0.sample.hasDetailedCounters },
             children: children
         )
     }
@@ -124,6 +127,7 @@ enum TableRowBuilder {
             isApproximate: member.sample.isApproximate,
             isSuspended: member.sample.isSuspended,
             isUnavailable: member.sample.isUnavailable,
+            lacksCounters: !member.sample.hasDetailedCounters,
             children: nil
         )
     }
@@ -165,6 +169,7 @@ enum TableRowBuilder {
         switch keyPath {
         case \TableRowItem.cpu: .cpu
         case \TableRowItem.memory: .memory
+        case \TableRowItem.impact: .impact
         case \TableRowItem.energy: .energy
         case \TableRowItem.gpu: .gpu
         case \TableRowItem.network: .network
@@ -177,6 +182,7 @@ enum TableRowBuilder {
         switch keyPath {
         case \TableRowItem.cpu: { $0.metrics.cpu }
         case \TableRowItem.memory: { Double($0.metrics.memory) }
+        case \TableRowItem.impact: { $0.metrics.energyImpact }
         case \TableRowItem.energy: { $0.metrics.energy }
         case \TableRowItem.gpu: { $0.metrics.gpu }
         case \TableRowItem.network: { $0.metrics.network }

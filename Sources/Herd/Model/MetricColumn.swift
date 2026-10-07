@@ -1,7 +1,7 @@
 import Foundation
 
 enum MetricColumn: String, CaseIterable, Identifiable, Sendable {
-    case cpu, memory, energy, gpu, network, disk
+    case cpu, memory, impact, energy, gpu, network, disk
 
     var id: String { rawValue }
 
@@ -9,6 +9,7 @@ enum MetricColumn: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cpu: "CPU"
         case .memory: "Memory"
+        case .impact: "Energy Impact"
         case .energy: "Power"
         case .gpu: "GPU"
         case .network: "Network"
@@ -20,6 +21,7 @@ enum MetricColumn: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cpu: "cpu"
         case .memory: "memorychip"
+        case .impact: "leaf"
         case .energy: "bolt"
         case .gpu: "square.stack.3d.up"
         case .network: "arrow.up.arrow.down"
@@ -31,6 +33,7 @@ enum MetricColumn: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cpu: metrics.cpu
         case .memory: Double(metrics.memory)
+        case .impact: metrics.energyImpact
         case .energy: metrics.energy
         case .gpu: metrics.gpu
         case .network: metrics.network
@@ -42,6 +45,7 @@ enum MetricColumn: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cpu, .gpu: Format.percent(value)
         case .memory: Format.bytes(UInt64(max(value, 0)))
+        case .impact: String(format: "%.1f", value)
         case .energy: Format.watts(value)
         case .network, .disk: Format.rate(value)
         }
@@ -52,6 +56,7 @@ enum MetricColumn: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cpu: 10...150
         case .memory: 500_000_000...4_000_000_000
+        case .impact: 10...150
         case .energy: 0.5...8
         case .gpu: 5...60
         case .network: 100_000...20_000_000

@@ -145,12 +145,16 @@ final class MonitorStore {
 
     // Re-rendering the app table is the most expensive thing Herd does, so per-app data is only published while someone can see it.
     func setSurface(_ name: String, visible: Bool) {
+        let wasVisible = !visibleSurfaces.isEmpty
         if visible {
             visibleSurfaces.insert(name)
             publishDetail()
         } else {
             visibleSurfaces.remove(name)
         }
+        let isVisible = !visibleSurfaces.isEmpty
+        guard isVisible != wasVisible else { return }
+        Task { await engine.setDetailVisible(isVisible) }
     }
 
     // Forced frames cover a shorter window than the update interval, so they'd skew the evenly spaced history.

@@ -21,6 +21,7 @@ final class ProcessSampler {
     private struct Counters {
         let cpuNanos: UInt64
         let energyNanojoules: UInt64
+        let idleWakeups: UInt64
         let diskRead: UInt64
         let diskWrite: UInt64
         let time: UInt64
@@ -28,19 +29,22 @@ final class ProcessSampler {
 
     private struct Reading {
         let counters: Counters?
-        let fallbackCPU: Double?
+        let reported: ReportedUsage?
         let memory: UInt64
         let threads: Int
-        let isApproximate: Bool
     }
 
     private let ticksToNanos: Double
-    private let fallback = PrivilegedFallback()
+    // top walks every thread on the Mac, so it samples slowly and only while someone is looking at per-app numbers.
+    private static let topInterval: TimeInterval = 10
+    private let top = TopStream(interval: topInterval)
     private var staticCache: [ProcessKey: StaticInfo] = [:]
     private var previous: [ProcessKey: Counters] = [:]
     private var ports: [ProcessKey: [UInt16]] = [:]
     private var tick = 0
     private static let portRefreshTicks = 5
+    private static let nanosPerSecond = 1_000_000_000.0
+    private static let kernelPid: pid_t = 0
     private static let systemPrefixes = ["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/", "/Library/Apple/", "/usr/bin/", "/bin/"]
     private let currentUid = getuid()
     private var argumentBuffer = [UInt8](repeating: 0, count: ProcessIntrospection.argumentBufferSize())
@@ -51,28 +55,29 @@ final class ProcessSampler {
         ticksToNanos = Double(timebase.numer) / Double(timebase.denom)
     }
 
+    deinit {
+        top.stop()
+    }
+
+    func setDetailVisible(_ isVisible: Bool) {
+        isVisible ? top.start() : top.stop()
+    }
+
     func sample() -> [ProcessSample] {
         let now = DispatchTime.now().uptimeNanoseconds
         let kernelList = KernelProcessList.all()
+        let reported = top.usage()
         var readings: [pid_t: Reading] = [:]
-        var denied: [pid_t] = []
+        readings.reserveCapacity(kernelList.count)
         for proc in kernelList {
-            if let reading = readDirect(proc.pid, now: now) {
-                readings[proc.pid] = reading
-            } else {
-                denied.append(proc.pid)
-            }
-        }
-        for (pid, usage) in fallback.read(pids: denied) {
-            readings[pid] = Reading(
-                counters: nil,
-                fallbackCPU: usage.cpuPercent,
-                memory: usage.residentBytes,
-                threads: 0,
-                isApproximate: true
-            )
+            let direct = proc.pid == Self.kernelPid ? nil : readDirect(proc.pid, now: now)
+            readings[proc.pid] = direct ?? reported[proc.pid].map(Self.reading)
         }
         return buildSamples(kernelList, readings: readings)
+    }
+
+    private static func reading(_ usage: ReportedUsage) -> Reading {
+        Reading(counters: nil, reported: usage, memory: usage.footprint, threads: usage.threads)
     }
 
     private func buildSamples(_ kernelList: [KernelProcess], readings: [pid_t: Reading]) -> [ProcessSample] {
@@ -123,22 +128,40 @@ final class ProcessSampler {
             netOutBps: 0,
             gpuPercent: 0,
             threads: reading?.threads ?? 0,
-            isApproximate: reading?.isApproximate ?? true,
+            isApproximate: reading == nil,
             isSuspended: proc.isStopped,
             workingDirectory: info.workingDirectory
         )
         sample.isUnavailable = reading == nil
-        if let fallbackCPU = reading?.fallbackCPU {
-            sample.cpuPercent = fallbackCPU
+        if let reported = reading?.reported {
+            Self.apply(reported, to: &sample)
             return sample
         }
-        guard let current = reading?.counters, let last, current.time > last.time else { return sample }
-        let seconds = Double(current.time - last.time) / 1_000_000_000
-        sample.cpuPercent = Double(current.cpuNanos.saturatingSub(last.cpuNanos)) / 1_000_000_000 / seconds * 100
-        sample.energyWatts = Double(current.energyNanojoules.saturatingSub(last.energyNanojoules)) / 1_000_000_000 / seconds
+        guard let current = reading?.counters else { return sample }
+        sample.cpuSeconds = Double(current.cpuNanos) / Self.nanosPerSecond
+        guard let last, current.time > last.time else { return sample }
+        Self.applyRates(from: last, to: current, on: &sample)
+        return sample
+    }
+
+    private static func apply(_ reported: ReportedUsage, to sample: inout ProcessSample) {
+        sample.hasDetailedCounters = false
+        sample.cpuPercent = reported.cpuPercent
+        sample.energyImpact = reported.energyImpact
+        sample.idleWakeups = reported.idleWakeups
+        sample.cpuSeconds = reported.cpuSeconds
+    }
+
+    private static func applyRates(from last: Counters, to current: Counters, on sample: inout ProcessSample) {
+        let seconds = Double(current.time - last.time) / nanosPerSecond
+        let cpuNanos = current.cpuNanos.saturatingSub(last.cpuNanos)
+        let wakeups = current.idleWakeups.saturatingSub(last.idleWakeups)
+        sample.cpuPercent = Double(cpuNanos) / nanosPerSecond / seconds * 100
+        sample.energyWatts = Double(current.energyNanojoules.saturatingSub(last.energyNanojoules)) / nanosPerSecond / seconds
+        sample.energyImpact = EnergyImpact.score(cpuNanos: cpuNanos, idleWakeups: wakeups, seconds: seconds)
+        sample.idleWakeups = Double(wakeups) / seconds
         sample.diskReadBps = Double(current.diskRead.saturatingSub(last.diskRead)) / seconds
         sample.diskWriteBps = Double(current.diskWrite.saturatingSub(last.diskWrite)) / seconds
-        return sample
     }
 
     private func readDirect(_ pid: pid_t, now: UInt64) -> Reading? {
@@ -153,11 +176,12 @@ final class ProcessSampler {
         let counters = Counters(
             cpuNanos: UInt64(Double(ticks) * ticksToNanos),
             energyNanojoules: usage.ri_energy_nj,
+            idleWakeups: usage.ri_pkg_idle_wkups,
             diskRead: usage.ri_diskio_bytesread,
             diskWrite: usage.ri_diskio_byteswritten,
             time: now
         )
-        return Reading(counters: counters, fallbackCPU: nil, memory: usage.ri_phys_footprint, threads: threadCount(pid), isApproximate: false)
+        return Reading(counters: counters, reported: nil, memory: usage.ri_phys_footprint, threads: threadCount(pid))
     }
 
     private func threadCount(_ pid: pid_t) -> Int {

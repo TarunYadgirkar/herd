@@ -13,6 +13,9 @@ actor SamplingEngine {
     private let systemSampler = SystemSampler()
     private let gpuSampler = GPUSampler()
     private let networkSampler = NetworkSampler()
+    private let sensorSampler = SensorSampler()
+    private let batterySampler = BatterySampler()
+    private let powerSampler = PowerSampler()
     private let grouper = AppGrouper()
 
     func start() {
@@ -21,10 +24,22 @@ actor SamplingEngine {
 
     func stop() {
         networkSampler.stop()
+        processSampler.setDetailVisible(false)
+    }
+
+    func setDetailVisible(_ isVisible: Bool) {
+        processSampler.setDetailVisible(isVisible)
     }
 
     func tick(regularAppPids: Set<pid_t>) -> Frame {
-        let system = systemSampler.sample()
+        var system = systemSampler.sample()
+        system.sensors = sensorSampler.sample()
+        system.batteryDetails = batterySampler.sample()
+        system.power = powerSampler.sample().map { reading in
+            var merged = reading
+            merged.systemWatts = system.sensors?.systemWatts
+            return merged
+        }
         let gpu = gpuSampler.sample()
         let network = networkSampler.rates()
         let awake = ProcessResources.sleepAssertions()

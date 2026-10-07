@@ -36,9 +36,9 @@ enum PerformanceSection: String, CaseIterable, Identifiable {
         case .cpu: Format.percent(system.cpuTotal * 100)
         case .memory: "\(PerformanceFormat.gigabytes(system.memoryUsed)) of \(PerformanceFormat.gigabytes(system.memoryTotal, decimals: 0)) GB"
         case .gpu: system.gpuUtilization.map { Format.percent($0 * 100) } ?? PerformanceFormat.missing
-        case .network: "↓ \(Format.rate(system.netInBps)) ↑ \(Format.rate(system.netOutBps))"
-        case .disk: "↓ \(Format.rate(system.diskReadBps)) ↑ \(Format.rate(system.diskWriteBps))"
-        case .energy: system.power.map { Format.watts($0.systemWatts ?? $0.packageWatts) } ?? PerformanceFormat.missing
+        case .network: Format.rate(system.netInBps + system.netOutBps)
+        case .disk: Format.rate(system.diskReadBps + system.diskWriteBps)
+        case .energy: (system.sensors?.systemWatts ?? system.power?.packageWatts).map(Format.watts) ?? PerformanceFormat.missing
         case .sensors: system.sensors?.cpuCelsius.map(PerformanceFormat.celsius) ?? PerformanceFormat.missing
         case .battery: batteryPercent(system).map(Format.percent) ?? PerformanceFormat.missing
         }
