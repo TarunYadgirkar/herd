@@ -19,6 +19,8 @@ final class PrivilegedFallback {
     private static let refreshEveryTicks = 3
 
     private var tick = 0
+    private var reads = 0
+    private static let readsBeforeRatesExist = 2
     private var lastRaw: [pid_t: Raw] = [:]
     private var lastReadTime: UInt64 = 0
     private var cached: [pid_t: Usage] = [:]
@@ -26,7 +28,8 @@ final class PrivilegedFallback {
     func read(pids: [pid_t]) -> [pid_t: Usage] {
         defer { tick += 1 }
         let targets = pids.filter { $0 > 0 }
-        let isDue = tick % Self.refreshEveryTicks == 0 || targets.contains { cached[$0] == nil }
+        let isWarmingUp = reads < Self.readsBeforeRatesExist
+        let isDue = isWarmingUp || tick % Self.refreshEveryTicks == 0 || targets.contains { cached[$0] == nil }
         if isDue, !targets.isEmpty, let output = runPs(targets) {
             refresh(with: parse(output))
         }
@@ -47,6 +50,7 @@ final class PrivilegedFallback {
         cached = next
         lastRaw = raw
         lastReadTime = now
+        reads += 1
     }
 
     private func parse(_ output: String) -> [pid_t: Raw] {

@@ -22,6 +22,7 @@ struct ProcessSample: Sendable, Identifiable, Hashable {
     var threads: Int
     var isApproximate: Bool
     var isSuspended: Bool
+    var isUnavailable: Bool = false
     var workingDirectory: String? = nil
     var listeningPorts: [UInt16] = []
     var sleepAssertions: [String] = []

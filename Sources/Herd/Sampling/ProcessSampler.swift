@@ -126,6 +126,7 @@ final class ProcessSampler {
             isSuspended: proc.isStopped,
             workingDirectory: info.workingDirectory
         )
+        sample.isUnavailable = reading == nil
         if let fallbackCPU = reading?.fallbackCPU {
             sample.cpuPercent = fallbackCPU
             return sample

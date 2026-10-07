@@ -188,11 +188,14 @@ extension SystemSampler {
 // MARK: - Network
 
 private struct InterfaceBytes {
-    let input: UInt32
-    let output: UInt32
+    let input: UInt64
+    let output: UInt64
 }
 
 extension SystemSampler {
+    // Tunnels (VPNs) re-carry traffic that already crossed a physical interface, so counting them would double it.
+    private static let skippedInterfacePrefixes = ["lo", "utun", "ipsec", "ppp", "gif", "stf"]
+
     private func fillNetwork(_ snapshot: inout SystemSnapshot, elapsed: Double) {
         let current = Self.interfaceBytes()
         defer { lastInterfaceBytes = current }
@@ -200,28 +203,46 @@ extension SystemSampler {
         var output: UInt64 = 0
         for (name, bytes) in current {
             guard let old = lastInterfaceBytes[name] else { continue }
-            input += UInt64(bytes.input &- old.input)
-            output += UInt64(bytes.output &- old.output)
+            input += bytes.input >= old.input ? bytes.input - old.input : 0
+            output += bytes.output >= old.output ? bytes.output - old.output : 0
         }
         snapshot.netInBps = Self.rate(input, over: elapsed)
         snapshot.netOutBps = Self.rate(output, over: elapsed)
     }
 
+    // NET_RT_IFLIST2 exposes 64-bit counters; getifaddrs' if_data is 32-bit and wraps after 4 GiB.
     private static func interfaceBytes() -> [String: InterfaceBytes] {
-        var head: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&head) == 0, let first = head else { return [:] }
-        defer { freeifaddrs(head) }
+        var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
+        var length = 0
+        guard sysctl(&mib, UInt32(mib.count), nil, &length, nil, 0) == 0, length > 0 else { return [:] }
+        var buffer = [UInt8](repeating: 0, count: length)
+        guard sysctl(&mib, UInt32(mib.count), &buffer, &length, nil, 0) == 0 else { return [:] }
         var result: [String: InterfaceBytes] = [:]
-        for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
-            let entry = pointer.pointee
-            guard let address = entry.ifa_addr, address.pointee.sa_family == sa_family_t(AF_LINK) else { continue }
-            guard entry.ifa_flags & UInt32(IFF_UP) != 0, let data = entry.ifa_data else { continue }
-            let name = String(cString: entry.ifa_name)
-            guard !name.hasPrefix("lo") else { continue }
-            let stats = data.assumingMemoryBound(to: if_data.self).pointee
-            result[name] = InterfaceBytes(input: stats.ifi_ibytes, output: stats.ifi_obytes)
+        buffer.withUnsafeBytes { raw in
+            var offset = 0
+            while offset + MemoryLayout<if_msghdr>.size <= length {
+                let header = raw.loadUnaligned(fromByteOffset: offset, as: if_msghdr.self)
+                guard header.ifm_msglen > 0 else { break }
+                if header.ifm_type == UInt8(RTM_IFINFO2), offset + MemoryLayout<if_msghdr2>.size <= length {
+                    let info = raw.loadUnaligned(fromByteOffset: offset, as: if_msghdr2.self)
+                    if let name = interfaceName(info.ifm_index), info.ifm_flags & IFF_UP != 0, !isSkipped(name) {
+                        result[name] = InterfaceBytes(input: info.ifm_data.ifi_ibytes, output: info.ifm_data.ifi_obytes)
+                    }
+                }
+                offset += Int(header.ifm_msglen)
+            }
         }
         return result
+    }
+
+    private static func interfaceName(_ index: UInt16) -> String? {
+        var name = [CChar](repeating: 0, count: Int(IF_NAMESIZE))
+        guard if_indextoname(UInt32(index), &name) != nil else { return nil }
+        return String(decoding: name.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    }
+
+    private static func isSkipped(_ name: String) -> Bool {
+        skippedInterfacePrefixes.contains { name.hasPrefix($0) }
     }
 }
 

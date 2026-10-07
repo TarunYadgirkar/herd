@@ -13,6 +13,7 @@ final class AppGrouper {
         let key: String
         let title: String
         let subtitle: String?
+        let path: String
     }
 
     private static let systemPrefixes = [
@@ -21,6 +22,7 @@ final class AppGrouper {
 
     private let currentUid = getuid()
     private var bundleNames: [String: String] = [:]
+    private var bundleKeys: [String: String] = [:]
     private var assignments: [String: Assignment] = [:]
 
     func group(_ samples: [ProcessSample], regularAppPids: Set<pid_t>) -> [AppGroup] {
@@ -29,7 +31,8 @@ final class AppGrouper {
         var nextAssignments: [String: Assignment] = [:]
         nextAssignments.reserveCapacity(samples.count)
         for sample in samples {
-            let assignment = assignments[sample.id] ?? assign(sample, byPid: byPid)
+            let cached = assignments[sample.id].flatMap { $0.path == sample.path ? $0 : nil }
+            let assignment = cached ?? assign(sample, byPid: byPid)
             nextAssignments[sample.id] = assignment
             let member = GroupedProcess(sample: sample, title: assignment.title, subtitle: assignment.subtitle)
             buckets[assignment.key, default: (assignment.target, [])].members.append(member)
@@ -41,29 +44,45 @@ final class AppGrouper {
     }
 
     private func assign(_ sample: ProcessSample, byPid: [pid_t: ProcessSample]) -> Assignment {
-        if let runtime = Runtime.detect(executableName: sample.name) {
+        if let runtime = Self.standaloneRuntime(sample) {
             let label = ScriptLabel.make(runtime: runtime, arguments: sample.arguments, workingDirectory: sample.workingDirectory)
-            return makeAssignment(.runtime(runtime), title: label.title, subtitle: label.location)
+            return makeAssignment(.runtime(runtime), title: label.title, subtitle: label.location, path: sample.path)
         }
         let ownBundle = Self.outermostBundle(sample.path)
         if let parentBundle = responsibleBundle(for: sample, ownBundle: ownBundle, byPid: byPid) {
-            return makeAssignment(.bundle(parentBundle), title: sample.name)
+            return makeAssignment(.bundle(parentBundle), title: sample.name, path: sample.path)
         }
-        if let ownBundle { return makeAssignment(.bundle(ownBundle), title: sample.name) }
-        return makeAssignment(.standalone(sample.name), title: sample.name)
+        if let ownBundle { return makeAssignment(.bundle(ownBundle), title: sample.name, path: sample.path) }
+        return makeAssignment(.standalone(sample.name), title: sample.name, path: sample.path)
     }
 
-    private func makeAssignment(_ target: Target, title: String, subtitle: String? = nil) -> Assignment {
-        Assignment(target: target, key: Self.key(for: target), title: title, subtitle: subtitle)
+    private func makeAssignment(_ target: Target, title: String, subtitle: String? = nil, path: String) -> Assignment {
+        Assignment(target: target, key: key(for: target), title: title, subtitle: subtitle, path: path)
+    }
+
+    // Interpreters bundled inside an app (ChatGPT's node, an Electron app's python) belong to that app, not the global runtime group.
+    private static func standaloneRuntime(_ sample: ProcessSample) -> Runtime? {
+        guard let runtime = Runtime.detect(executableName: sample.name) else { return nil }
+        guard let bundle = outermostBundle(sample.path) else { return runtime }
+        return (bundle as NSString).lastPathComponent == "Python.app" ? runtime : nil
     }
 
     private func responsibleBundle(for sample: ProcessSample, ownBundle: String?, byPid: [pid_t: ProcessSample]) -> String? {
         guard sample.responsiblePid != sample.pid,
               let responsible = byPid[sample.responsiblePid],
-              Runtime.detect(executableName: responsible.name) == nil,
+              Self.standaloneRuntime(responsible) == nil,
               let bundle = Self.outermostBundle(responsible.path) else { return nil }
-        let isServiceOnBehalf = ownBundle == nil || sample.path.contains(".xpc/")
+        guard let ownBundle else { return bundle }
+        let isServiceOnBehalf = sample.path.contains(".xpc/") || !Self.isPrimaryBinary(sample.path, of: ownBundle)
         return isServiceOnBehalf ? bundle : nil
+    }
+
+    // An app's own code lives in Contents/MacOS or in nested helper bundles. Loose tools elsewhere in a bundle
+    // (Xcode's git and clang) are run by whoever launched them, so they shouldn't make Xcode look busy.
+    private static func isPrimaryBinary(_ path: String, of bundle: String) -> Bool {
+        let inside = path.dropFirst(bundle.count)
+        if inside.hasPrefix("/Contents/MacOS/") { return true }
+        return [".app/", ".xpc/", ".appex/"].contains { inside.contains($0) }
     }
 
     private func makeGroup(key: String, target: Target, members: [GroupedProcess], regularAppPids: Set<pid_t>) -> AppGroup {
@@ -85,12 +104,20 @@ final class AppGrouper {
         }
     }
 
-    private static func key(for target: Target) -> String {
+    private func key(for target: Target) -> String {
         switch target {
-        case .bundle(let path): "bundle:\(path)"
+        case .bundle(let path): "bundle:\(bundleKey(path))"
         case .runtime(let runtime): "runtime:\(runtime.rawValue)"
         case .standalone(let name): "proc:\(name)"
         }
+    }
+
+    // Keying by bundle identifier keeps an app's history and selection across updates that move its path (the claude CLI, App Translocation).
+    private func bundleKey(_ path: String) -> String {
+        if let cached = bundleKeys[path] { return cached }
+        let key = Bundle(path: path)?.bundleIdentifier ?? path
+        bundleKeys[path] = key
+        return key
     }
 
     private static func mainPid(bundle: String, members: [GroupedProcess], regularAppPids: Set<pid_t>) -> pid_t? {

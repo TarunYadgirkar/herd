@@ -113,7 +113,7 @@ final class MonitorStore {
     private func refresh(force: Bool = false) async {
         guard force || !isPaused else { return }
         let frame = await engine.tick(regularAppPids: currentRegularAppPids())
-        apply(frame)
+        apply(frame, recordsHistory: !force)
     }
 
     // Listing running apps is expensive, so the set is rebuilt only when an app launches or quits.
@@ -144,8 +144,9 @@ final class MonitorStore {
         }
     }
 
-    private func apply(_ frame: Frame) {
-        if hasFirstFrame { recordHistory(frame) }
+    // Forced frames cover a shorter window than the update interval, so they'd skew the evenly spaced history.
+    private func apply(_ frame: Frame, recordsHistory: Bool) {
+        if hasFirstFrame && recordsHistory { recordHistory(frame) }
         latestFrame = frame
         let nextHeadline = Headline(cpu: frame.system.cpuTotal, memoryUsed: frame.system.memoryUsed)
         if nextHeadline != headline { headline = nextHeadline }

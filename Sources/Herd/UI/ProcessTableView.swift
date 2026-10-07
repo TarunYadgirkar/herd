@@ -138,7 +138,7 @@ struct ProcessTableView: View {
     }
 
     private func isUnavailable(_ row: TableRowItem, _ column: MetricColumn) -> Bool {
-        row.isApproximate && (column == .energy || column == .disk)
+        row.isUnavailable || (row.isApproximate && (column == .energy || column == .disk))
     }
 
     private func resolve(_ ids: Set<TableRowItem.ID>) -> [TableRowItem] {

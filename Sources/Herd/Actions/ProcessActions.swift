@@ -52,10 +52,13 @@ struct ActionOutcome {
     let goneNames: [String]
 
     func message(for action: ProcessAction, name: String) -> String {
+        if succeeded > 0 && !deniedNames.isEmpty {
+            return "\(action.doneMessage(name)). macOS kept \(list(deniedNames)) running because it belongs to the system."
+        }
+        if succeeded > 0 { return action.doneMessage(name) }
         if !deniedNames.isEmpty {
             return "macOS didn't let Herd \(action.title.lowercased()) \(list(deniedNames)). Only an administrator can stop system processes."
         }
-        if succeeded > 0 { return action.doneMessage(name) }
         if !protectedNames.isEmpty { return "\(list(protectedNames)) keeps macOS running, so Herd won't touch it." }
         if !goneNames.isEmpty { return "\(name) had already exited." }
         return "Nothing to \(action.title.lowercased()) in \(name)."
@@ -69,16 +72,23 @@ struct ActionOutcome {
 enum ProcessActions {
     // Signalling these logs you out, hangs the Mac, or kills Herd itself.
     private static let protectedNames: Set<String> = ["WindowServer", "loginwindow", "launchd", "kernel_task"]
-    // Pausing these freezes the desktop: no Dock, no menu bar, no way back to Herd to resume them.
-    private static let unpausableNames: Set<String> = ["Dock", "Finder", "SystemUIServer", "ControlCenter", "NotificationCenter", "coreaudiod", "hidd"]
+    // Pausing these freezes the desktop or every app that talks to them, with no way back to Herd to resume them.
+    private static let unpausableNames: Set<String> = [
+        "Dock", "Finder", "SystemUIServer", "ControlCenter", "NotificationCenter", "WindowManager", "coreaudiod", "hidd",
+        "cfprefsd", "lsd", "distnoted", "pboard", "TextInputMenuAgent", "universalaccessd",
+    ]
+    private static let systemPrefixes = ["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/", "/Library/Apple/"]
+    private static let currentUid = getuid()
 
     static func isProtected(_ sample: ProcessSample, for action: ProcessAction = .quit) -> Bool {
         if sample.pid <= 1 || sample.pid == getpid() || protectedNames.contains(sample.name) { return true }
-        return action == .suspend && unpausableNames.contains(sample.name)
+        guard action == .suspend else { return false }
+        return unpausableNames.contains(sample.name) || sample.uid != currentUid || systemPrefixes.contains { sample.path.hasPrefix($0) }
     }
 
     static func canAct(on group: AppGroup, action: ProcessAction = .quit) -> Bool {
-        group.processes.contains { !isProtected($0.sample, for: action) }
+        if action == .suspend && group.kind == .system { return false }
+        return group.processes.contains { !isProtected($0.sample, for: action) }
     }
 
     @MainActor

@@ -43,14 +43,30 @@ struct ScriptLabel: Equatable, Sendable {
     private static let flagsWithValue: Set<String> = ["-W", "-X", "--require", "-r", "--import", "--loader", "-cp", "-classpath", "--inspect-port"]
 
     static func make(runtime: Runtime, arguments: [String], workingDirectory: String?) -> ScriptLabel {
-        let args = Array(arguments.dropFirst())
+        let args = arguments.dropFirst().filter { !$0.isEmpty }
         let folder = workingDirectory.map(abbreviate)
+        if let renamed = renamedTitle(arguments) { return ScriptLabel(title: renamed, location: folder) }
         if let module = value(after: "-m", in: args) { return ScriptLabel(title: "-m \(module)", location: folder) }
         if args.contains("-c") || args.contains("-e") || args.contains("--eval") { return ScriptLabel(title: "inline code", location: folder) }
         if runtime == .java, let jar = value(after: "-jar", in: args) { return fromPath(jar, workingDirectory: workingDirectory) }
         guard let script = firstPositional(args) else { return ScriptLabel(title: "interactive", location: folder) }
         if runtime == .java { return ScriptLabel(title: script.split(separator: ".").last.map(String.init) ?? script, location: folder) }
         return fromPath(script, workingDirectory: workingDirectory)
+    }
+
+    // Tools like npx overwrite their argv with a readable title ("npm exec @playwright/mcp@latest") and blank the rest.
+    private static func renamedTitle(_ arguments: [String]) -> String? {
+        guard let first = arguments.first, first.contains(" "), !first.hasPrefix("/"),
+              arguments.dropFirst().allSatisfy(\.isEmpty) else { return nil }
+        let npmExec = "npm exec "
+        guard first.hasPrefix(npmExec) else { return first }
+        let package = first.dropFirst(npmExec.count).split(separator: " ").first.map(String.init) ?? first
+        return withoutVersion(package)
+    }
+
+    private static func withoutVersion(_ package: String) -> String {
+        guard let at = package.lastIndex(of: "@"), at != package.startIndex else { return package }
+        return String(package[..<at])
     }
 
     private static func value(after flag: String, in args: [String]) -> String? {
@@ -75,8 +91,10 @@ struct ScriptLabel: Equatable, Sendable {
         let components = url.pathComponents
         if let packageIndex = components.lastIndex(of: "node_modules"), packageIndex + 1 < components.count {
             let package = components[packageIndex + 1]
+            let isShim = package == ".bin" && packageIndex + 2 < components.count
             let scoped = package.hasPrefix("@") && packageIndex + 2 < components.count ? "\(package)/\(components[packageIndex + 2])" : package
-            return ScriptLabel(title: scoped, location: abbreviate(components.prefix(packageIndex).joined(separator: "/")))
+            let location = raw.contains("/.npm/_npx/") ? "npx" : abbreviate(components.prefix(packageIndex).joined(separator: "/"))
+            return ScriptLabel(title: isShim ? components[packageIndex + 2] : scoped, location: location)
         }
         let parent = url.deletingLastPathComponent().path
         let isLocatable = raw.contains("/") || workingDirectory != nil

@@ -13,6 +13,7 @@ struct TableRowItem: Identifiable, Sendable {
     let count: Int
     let isApproximate: Bool
     let isSuspended: Bool
+    var isUnavailable = false
     var children: [TableRowItem]?
 
     var cpu: Double { metrics.cpu }
@@ -50,7 +51,8 @@ enum TableRowBuilder {
             metrics: metrics,
             count: members.count,
             isApproximate: members.allSatisfy(\.sample.isApproximate),
-            isSuspended: members.allSatisfy(\.sample.isSuspended),
+            isSuspended: groupMatches ? group.isSuspended : members.allSatisfy(\.sample.isSuspended),
+            isUnavailable: members.allSatisfy(\.sample.isUnavailable),
             children: children
         )
     }
@@ -90,6 +92,7 @@ enum TableRowBuilder {
             count: 1,
             isApproximate: member.sample.isApproximate,
             isSuspended: member.sample.isSuspended,
+            isUnavailable: member.sample.isUnavailable,
             children: nil
         )
     }

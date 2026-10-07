@@ -77,7 +77,11 @@ struct AppGroup: Sendable, Identifiable {
     let metrics: Metrics
 
     var pids: [pid_t] { processes.map(\.sample.pid) }
-    var isSuspended: Bool { !processes.isEmpty && processes.allSatisfy(\.sample.isSuspended) }
+    // Root-owned members can't be paused by Herd, so only the user's own processes decide whether the group reads as paused.
+    var isSuspended: Bool {
+        let own = processes.filter { $0.sample.uid == getuid() }
+        return !own.isEmpty && own.allSatisfy(\.sample.isSuspended)
+    }
     var hasApproximateData: Bool { processes.contains(where: \.sample.isApproximate) }
     var executablePath: String? { processes.first(where: { $0.sample.pid == mainPid })?.sample.path ?? processes.first?.sample.path }
 }
