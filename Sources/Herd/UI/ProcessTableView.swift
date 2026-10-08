@@ -1,10 +1,13 @@
 import AppKit
 import SwiftUI
 
-struct ProcessTableView: View {
+struct ProcessTableView: View, Equatable {
     let rows: [TableRowItem]
+    let rowsVersion: Int
     @Binding var selection: TableRowItem.ID?
     @Binding var sortOrder: [KeyPathComparator<TableRowItem>]
+    let selected: TableRowItem.ID?
+    let sorting: [KeyPathComparator<TableRowItem>]
     let onPointerMove: () -> Void
     let history: (String) -> GroupHistory
     let trendColumn: MetricColumn
@@ -14,6 +17,19 @@ struct ProcessTableView: View {
     let isSearching: Bool
     var isTree = false
 
+    // Closures and bindings are rebuilt every pass, so the table is re-evaluated only when what it shows could differ.
+    nonisolated static func == (lhs: ProcessTableView, rhs: ProcessTableView) -> Bool {
+        lhs.rowsVersion == rhs.rowsVersion
+            && lhs.selected == rhs.selected
+            && lhs.sorting == rhs.sorting
+            && lhs.trendColumn == rhs.trendColumn
+            && lhs.isSearching == rhs.isSearching
+            && lhs.isTree == rhs.isTree
+    }
+
+    // The height automatic sizing settled on, so switching it off leaves the table looking the same.
+    private static let rowHeight: CGFloat = 30
+
     @AppStorage("processTableColumns") private var columnStorage = Data()
     @State private var columnCustomization = TableColumnCustomization<TableRowItem>()
     @State private var expanded: Set<String> = []
@@ -21,6 +37,7 @@ struct ProcessTableView: View {
     var body: some View {
         table
             .tableStyle(.inset(alternatesRowBackgrounds: false))
+            .environment(\.defaultMinListRowHeight, Self.rowHeight)
             .onContinuousHover { phase in
                 if case .active = phase { onPointerMove() }
             }
@@ -30,6 +47,7 @@ struct ProcessTableView: View {
                 guard !ids.isEmpty else { return }
                 onOpen()
             }
+            .background(FixedRowHeight(refresh: rowsVersion))
             .onAppear(perform: restoreColumns)
             .onChange(of: columnCustomization) { _, customization in
                 columnStorage = (try? JSONEncoder().encode(customization)) ?? Data()
@@ -74,7 +92,7 @@ struct ProcessTableView: View {
     @TableColumnBuilder<TableRowItem, KeyPathComparator<TableRowItem>>
     private var columns: some TableColumnContent<TableRowItem, KeyPathComparator<TableRowItem>> {
         TableColumn("Name", value: \.sortTitle) { row in
-            NameCell(row: row)
+            NameCell(row: row).equatable()
         }
         .width(min: 220, ideal: 300)
         .customizationID("name")
@@ -148,7 +166,7 @@ struct ProcessTableView: View {
                     .padding(.horizontal, 6)
                     .accessibilityLabel("Not available")
             } else {
-                HeatValue(column: column, value: row[keyPath: value])
+                HeatValue(column: column, value: row[keyPath: value]).equatable()
             }
         }
         .width(min: 64, ideal: column == .network || column == .disk || column == .impact || column == .energy ? 84 : 72)
@@ -173,8 +191,10 @@ struct ProcessTableView: View {
     }
 }
 
-private struct NameCell: View {
+private struct NameCell: View, Equatable {
     let row: TableRowItem
+
+    nonisolated static func == (lhs: NameCell, rhs: NameCell) -> Bool { lhs.row == rhs.row }
 
     var body: some View {
         HStack(spacing: Theme.itemSpacing) {
@@ -192,7 +212,7 @@ private struct NameCell: View {
                 }
             }
             Spacer(minLength: 4)
-            ForEach(ports, id: \.self) { port in
+            ForEach(row.badges.ports, id: \.self) { port in
                 Text(":" + String(port))
                     .font(.metricSmall)
                     .foregroundStyle(Theme.accent)
@@ -200,10 +220,10 @@ private struct NameCell: View {
                     .background(Theme.accent.opacity(0.12), in: Capsule())
                     .accessibilityLabel("Port " + String(port))
             }
-            if !sleepReasons.isEmpty {
+            if !row.badges.sleepReasons.isEmpty {
                 Image(systemName: "moon.zzz.fill")
                     .foregroundStyle(Theme.warning)
-                    .help(sleepReasons.joined(separator: ", "))
+                    .help(row.badges.sleepReasons.joined(separator: ", "))
                     .accessibilityLabel("Keeping your Mac awake")
             }
             if row.isSuspended {
@@ -222,21 +242,6 @@ private struct NameCell: View {
             }
         }
         .help(row.process?.sample.path ?? row.group.bundlePath ?? row.title)
-    }
-
-    private static let maxPorts = 3
-
-    private var members: [ProcessSample] {
-        if let process = row.process { return [process.sample] }
-        return (row.children ?? []).flatMap { $0.process.map { [$0.sample] } ?? ($0.children ?? []).compactMap { $0.process?.sample } }
-    }
-
-    private var ports: [UInt16] {
-        Array(Set(members.flatMap(\.listeningPorts))).sorted().prefix(Self.maxPorts).map { $0 }
-    }
-
-    private var sleepReasons: [String] {
-        Array(Set(members.flatMap(\.sleepAssertions))).sorted()
     }
 
     @ViewBuilder
@@ -344,5 +349,44 @@ private struct RowMenu: View {
         }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+    }
+}
+
+// Automatic row heights make NSTableView re-measure every visible cell's hosting view after each update, which was half the cost of a refresh.
+// Every row is one line, so a fixed height (taken from the environment) is equivalent. SwiftUI offers no switch for it, so the backing table is found and set directly.
+private struct FixedRowHeight: NSViewRepresentable {
+    let refresh: Int
+
+    private static let minimumColumns = 3
+
+    final class Coordinator {
+        weak var table: NSTableView?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        let coordinator = context.coordinator
+        DispatchQueue.main.async { [weak view] in
+            if coordinator.table?.window == nil { coordinator.table = view.flatMap(Self.findTable) }
+            guard let table = coordinator.table, table.usesAutomaticRowHeights else { return }
+            table.usesAutomaticRowHeights = false
+        }
+    }
+
+    private static func findTable(from view: NSView) -> NSTableView? {
+        var ancestor = view.superview
+        while let current = ancestor {
+            if let table = descendantTable(in: current) { return table }
+            ancestor = current.superview
+        }
+        return nil
+    }
+
+    private static func descendantTable(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView, table.tableColumns.count > minimumColumns { return table }
+        return view.subviews.lazy.compactMap(descendantTable).first
     }
 }

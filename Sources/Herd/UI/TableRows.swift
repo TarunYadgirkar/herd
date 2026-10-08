@@ -15,7 +15,28 @@ struct TableRowItem: Identifiable, Sendable, Equatable {
     let isSuspended: Bool
     var isUnavailable = false
     var lacksCounters = false
+    var badges = Badges()
     var children: [TableRowItem]?
+
+    struct Badges: Equatable, Sendable {
+        private static let maxPorts = 3
+
+        var ports: [UInt16] = []
+        var sleepReasons: [String] = []
+
+        init() {}
+
+        init(_ samples: [ProcessSample]) {
+            var ports = Set<UInt16>()
+            var reasons = Set<String>()
+            for sample in samples {
+                ports.formUnion(sample.listeningPorts)
+                reasons.formUnion(sample.sleepAssertions)
+            }
+            self.ports = Array(ports.sorted().prefix(Self.maxPorts))
+            self.sleepReasons = reasons.sorted()
+        }
+    }
 
     // Rows compare by what they display, so the table skips re-measuring the many idle rows whose numbers didn't visibly change.
     static func == (lhs: TableRowItem, rhs: TableRowItem) -> Bool {
@@ -27,24 +48,18 @@ struct TableRowItem: Identifiable, Sendable, Equatable {
         let subtitle: String?
         let count: Int
         let flags: [Bool]
-        let values: [Int64]
-        let ports: [UInt16]
-        let isAwake: Bool
+        let values: [Double]
+        let badges: Badges
     }
 
     private var displayKey: DisplayKey {
-        let samples = process.map { [$0.sample] } ?? group.processes.map(\.sample)
-        return DisplayKey(
+        DisplayKey(
             title: title,
             subtitle: subtitle,
             count: count,
             flags: [isApproximate, isSuspended, isUnavailable, lacksCounters],
-            values: [
-                Int64(metrics.cpu * 10), Int64(metrics.memory >> 20), Int64(metrics.energy * 100), Int64(metrics.energyImpact * 10),
-                Int64(metrics.gpu * 10), Int64(metrics.network / 102.4), Int64(metrics.disk / 102.4), Int64(metrics.threads),
-            ],
-            ports: samples.flatMap(\.listeningPorts),
-            isAwake: samples.contains { !$0.sleepAssertions.isEmpty }
+            values: MetricColumn.allCases.map { $0.displayed($0.value(metrics)) } + [Double(metrics.threads)],
+            badges: badges
         )
     }
 
@@ -58,6 +73,42 @@ struct TableRowItem: Identifiable, Sendable, Equatable {
     var threads: Int { metrics.threads }
     var sortTitle: String { title.lowercased() }
     var pid: pid_t? { process?.sample.pid }
+}
+
+extension MetricColumn {
+    // Rounds to the precision Format shows, so rows that look identical also compare and rank identically.
+    func displayed(_ value: Double) -> Double {
+        switch self {
+        case .cpu, .gpu: Self.quantize(value, below: 10, places: 1, else: 0)
+        case .impact: Self.quantize(value, below: .infinity, places: 1, else: 1)
+        case .energy: Self.quantize(value, below: 10, places: 2, else: 1)
+        case .memory: Self.roundedBytes(value)
+        case .network, .disk: Self.roundedRate(value)
+        }
+    }
+
+    private static func quantize(_ value: Double, below limit: Double, places: Int, else coarse: Int) -> Double {
+        let scale = pow(10, Double(value < limit ? places : coarse))
+        return (value * scale).rounded() / scale
+    }
+
+    private static let kilo = 1024.0
+    private static let mega = kilo * kilo
+    private static let giga = mega * kilo
+
+    private static func roundedBytes(_ bytes: Double) -> Double {
+        let mb = bytes / mega
+        if mb < 1 { return (bytes / kilo).rounded() * kilo }
+        if mb < kilo { return quantize(mb, below: 10, places: 1, else: 0) * mega }
+        return quantize(bytes / giga, below: 10, places: 2, else: 1) * giga
+    }
+
+    private static func roundedRate(_ bytesPerSecond: Double) -> Double {
+        guard bytesPerSecond >= 1 else { return 0 }
+        let kb = bytesPerSecond / kilo
+        if kb < kilo { return quantize(kb, below: 10, places: 1, else: 0) * kilo }
+        return quantize(kb / kilo, below: .infinity, places: 1, else: 1) * mega
+    }
 }
 
 enum TableRowBuilder {
@@ -87,6 +138,7 @@ enum TableRowBuilder {
             isSuspended: groupMatches ? group.isSuspended : members.allSatisfy(\.sample.isSuspended),
             isUnavailable: members.allSatisfy(\.sample.isUnavailable),
             lacksCounters: members.allSatisfy { !$0.sample.hasDetailedCounters },
+            badges: TableRowItem.Badges(members.map(\.sample)),
             children: children
         )
     }
@@ -109,6 +161,7 @@ enum TableRowBuilder {
                 count: cluster.count,
                 isApproximate: cluster.allSatisfy(\.sample.isApproximate),
                 isSuspended: cluster.allSatisfy(\.sample.isSuspended),
+                badges: TableRowItem.Badges(cluster.map(\.sample)),
                 children: cluster.map { processRow($0, group: group) }
             )
         }
@@ -128,6 +181,7 @@ enum TableRowBuilder {
             isSuspended: member.sample.isSuspended,
             isUnavailable: member.sample.isUnavailable,
             lacksCounters: !member.sample.hasDetailedCounters,
+            badges: TableRowItem.Badges([member.sample]),
             children: nil
         )
     }
@@ -147,8 +201,11 @@ enum TableRowBuilder {
     // Top-level rows rank by a short rolling average so momentary spikes don't reshuffle the table every tick.
     static func sorted(_ rows: [TableRowItem], using comparators: [KeyPathComparator<TableRowItem>], smoothed: ((TableRowItem) -> Double?)? = nil) -> [TableRowItem] {
         guard let first = comparators.first else { return rows }
-        let instant = sortValue(for: first.keyPath)
-        let topLevel: ((TableRowItem) -> Double)? = instant.map { value in { row in smoothed?(row) ?? value(row) } }
+        let column = metric(for: first.keyPath)
+        let instant = sortValue(for: first.keyPath).map { value in { (row: TableRowItem) in column?.displayed(value(row)) ?? value(row) } }
+        let topLevel: ((TableRowItem) -> Double)? = sortValue(for: first.keyPath).map { value in
+            { row in column?.displayed(smoothed?(row) ?? value(row)) ?? value(row) }
+        }
         return sorted(rows, value: topLevel, childValue: instant, ascending: first.order == .forward)
     }
 

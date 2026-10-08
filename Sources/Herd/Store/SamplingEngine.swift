@@ -19,6 +19,10 @@ actor SamplingEngine {
     private let powerSampler = PowerSampler()
     private let grouper = AppGrouper()
     private var lastTickUptime: UInt64?
+    private var tickCount = 0
+    private var awake: [pid_t: [String]] = [:]
+    // Sleep assertions change rarely and IOPMCopyAssertionsByProcess is the costliest per-tick call, so it refreshes every few ticks.
+    private static let assertionRefreshTicks = 5
 
     func start() {
         networkSampler.start()
@@ -44,7 +48,8 @@ actor SamplingEngine {
         }
         let gpu = gpuSampler.sample()
         let network = networkSampler.rates()
-        let awake = ProcessResources.sleepAssertions()
+        if tickCount % Self.assertionRefreshTicks == 0 { awake = ProcessResources.sleepAssertions() }
+        tickCount += 1
         let samples = processSampler.sample().map { sample in
             var enriched = sample
             enriched.gpuPercent = gpu[sample.pid] ?? 0

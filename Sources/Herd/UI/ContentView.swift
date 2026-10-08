@@ -33,6 +33,7 @@ struct ContentView: View {
     @State private var sortOrder = [KeyPathComparator(\TableRowItem.cpu, order: .reverse)]
     @State private var query = ""
     @State private var hold = OrderHold()
+    @State private var cache = RowCache()
     @State private var showInspector = false
     @AppStorage("scope") private var scope: Scope = .all
     @AppStorage("treeView") private var isTree = false
@@ -44,16 +45,20 @@ struct ContentView: View {
             Divider()
             ProcessTableView(
                 rows: rows,
+                rowsVersion: cache.version,
                 selection: $selection,
                 sortOrder: $sortOrder,
+                selected: selection,
+                sorting: sortOrder,
                 onPointerMove: holdOrder,
-                history: store.history(for:),
+                history: cache.history(for:),
                 trendColumn: trendColumn,
                 actions: actions,
                 onOpen: { showInspector = true },
                 isSearching: !query.trimmingCharacters(in: .whitespaces).isEmpty,
                 isTree: isTree
             )
+            .equatable()
         }
         .inspector(isPresented: $showInspector) {
             InspectorView(groupID: inspectedGroupID, processID: selectedProcessID)
@@ -108,9 +113,16 @@ struct ContentView: View {
         }
     }
 
+    // Reading groups on every pass keeps this view subscribed to new frames even when the cached rows are reused.
     private var visibleRows: [TableRowItem] {
-        let groups = store.groups.filter { scope.includes($0.kind) }
-        let rows = isTree ? TreeRowBuilder.rows(for: groups, query: query) : TableRowBuilder.rows(for: groups, query: query)
+        let groups = store.groups
+        let inputs = RowInputs(scope: scope, isTree: isTree, query: query, sortOrder: sortOrder)
+        return cache.rows(for: inputs, histories: store.groupHistory) { buildRows(groups) }
+    }
+
+    private func buildRows(_ groups: [AppGroup]) -> [TableRowItem] {
+        let visible = groups.filter { scope.includes($0.kind) }
+        let rows = isTree ? TreeRowBuilder.rows(for: visible, query: query) : TableRowBuilder.rows(for: visible, query: query)
         let sorted = TableRowBuilder.sorted(rows, using: sortOrder, smoothed: smoothedValue)
         guard let order = hold.activeOrder else { return sorted }
         return TableRowBuilder.holding(sorted, order: order)
@@ -128,7 +140,7 @@ struct ContentView: View {
     }
 
     private func holdOrder() {
-        hold.extend { TableRowBuilder.flattenOrder(visibleRows) }
+        hold.extend { TableRowBuilder.flattenOrder(cache.currentRows) }
     }
 
     private var trendColumn: MetricColumn {
@@ -179,5 +191,41 @@ private final class OrderHold {
     func release() {
         order = nil
         until = .distantPast
+    }
+}
+
+private struct RowInputs: Equatable {
+    let scope: Scope
+    let isTree: Bool
+    let query: String
+    let sortOrder: [KeyPathComparator<TableRowItem>]
+}
+
+// The table is the most expensive thing Herd draws, so it takes new rows at most this often while the header keeps ticking.
+// A change to scope, search, tree mode or sort rebuilds immediately.
+@MainActor
+private final class RowCache {
+    private static let minimumInterval: TimeInterval = 3
+
+    private var inputs: RowInputs?
+    private var committedAt = Date.distantPast
+    private var histories: [String: GroupHistory] = [:]
+    private(set) var currentRows: [TableRowItem] = []
+    private(set) var version = 0
+
+    func rows(for inputs: RowInputs, histories latest: [String: GroupHistory], build: () -> [TableRowItem]) -> [TableRowItem] {
+        let now = Date()
+        let isStale = now.timeIntervalSince(committedAt) >= Self.minimumInterval
+        guard inputs != self.inputs || currentRows.isEmpty || isStale else { return currentRows }
+        self.inputs = inputs
+        committedAt = now
+        histories = latest
+        currentRows = build()
+        version += 1
+        return currentRows
+    }
+
+    func history(for id: String) -> GroupHistory {
+        histories[id] ?? GroupHistory()
     }
 }

@@ -51,6 +51,7 @@ enum TreeRowBuilder {
             isSuspended: sample.isSuspended,
             isUnavailable: sample.isUnavailable,
             lacksCounters: !sample.hasDetailedCounters,
+            badges: TableRowItem.Badges([sample]),
             children: kids.isEmpty ? nil : kids
         )
     }

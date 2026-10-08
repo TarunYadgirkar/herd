@@ -17,6 +17,7 @@ final class SystemSampler {
     private var lastCPUTicks: CPUTicks?
     private var lastCoreTicks: [CPUTicks] = []
     private var lastInterfaceBytes: [String: InterfaceBytes] = [:]
+    private var interfaceNames: [UInt16: String] = [:]
     private var lastDiskBytes: DiskBytes?
     private var cachedBattery: BatteryInfo?
     private var lastBatteryRefresh: ContinuousClock.Instant?
@@ -197,7 +198,7 @@ extension SystemSampler {
     private static let skippedInterfacePrefixes = ["lo", "utun", "ipsec", "ppp", "gif", "stf"]
 
     private func fillNetwork(_ snapshot: inout SystemSnapshot, elapsed: Double) {
-        let current = Self.interfaceBytes()
+        let current = interfaceBytes()
         defer { lastInterfaceBytes = current }
         var input: UInt64 = 0
         var output: UInt64 = 0
@@ -211,7 +212,7 @@ extension SystemSampler {
     }
 
     // NET_RT_IFLIST2 exposes 64-bit counters; getifaddrs' if_data is 32-bit and wraps after 4 GiB.
-    private static func interfaceBytes() -> [String: InterfaceBytes] {
+    private func interfaceBytes() -> [String: InterfaceBytes] {
         var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
         var length = 0
         guard sysctl(&mib, UInt32(mib.count), nil, &length, nil, 0) == 0, length > 0 else { return [:] }
@@ -225,7 +226,7 @@ extension SystemSampler {
                 guard header.ifm_msglen > 0 else { break }
                 if header.ifm_type == UInt8(RTM_IFINFO2), offset + MemoryLayout<if_msghdr2>.size <= length {
                     let info = raw.loadUnaligned(fromByteOffset: offset, as: if_msghdr2.self)
-                    if let name = interfaceName(info.ifm_index), info.ifm_flags & IFF_UP != 0, !isSkipped(name) {
+                    if let name = interfaceName(info.ifm_index), info.ifm_flags & IFF_UP != 0, !Self.isSkipped(name) {
                         result[name] = InterfaceBytes(input: info.ifm_data.ifi_ibytes, output: info.ifm_data.ifi_obytes)
                     }
                 }
@@ -235,10 +236,13 @@ extension SystemSampler {
         return result
     }
 
-    private static func interfaceName(_ index: UInt16) -> String? {
+    private func interfaceName(_ index: UInt16) -> String? {
+        if let cached = interfaceNames[index] { return cached }
         var name = [CChar](repeating: 0, count: Int(IF_NAMESIZE))
         guard if_indextoname(UInt32(index), &name) != nil else { return nil }
-        return String(decoding: name.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        let resolved = String(decoding: name.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        interfaceNames[index] = resolved
+        return resolved
     }
 
     private static func isSkipped(_ name: String) -> Bool {

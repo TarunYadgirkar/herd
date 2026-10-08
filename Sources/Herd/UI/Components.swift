@@ -100,10 +100,14 @@ struct Sparkline: View {
     }
 }
 
-struct HeatValue: View {
+struct HeatValue: View, Equatable {
     let column: MetricColumn
     let value: Double
     var isApproximate = false
+
+    nonisolated static func == (lhs: HeatValue, rhs: HeatValue) -> Bool {
+        lhs.column == rhs.column && lhs.isApproximate == rhs.isApproximate && lhs.column.displayed(lhs.value) == rhs.column.displayed(rhs.value)
+    }
 
     var body: some View {
         let heat = column.heat(value)
