@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import UserNotifications
 
 enum AlertSettings {
@@ -33,6 +34,8 @@ enum AlertAction {
 // Alerts fire only on sustained conditions, never on momentary spikes, and each app gets a cooldown so Herd doesn't nag.
 @MainActor
 final class AlertMonitor {
+    nonisolated private static let log = Logger(subsystem: "com.tarunyadgirkar.herd", category: "alerts")
+
     private struct Streak {
         var since: Date
         var startMemory: UInt64
@@ -58,20 +61,27 @@ final class AlertMonitor {
         let quit = UNNotificationAction(identifier: AlertAction.quit, title: "Quit App", options: [.destructive])
         let ignore = UNNotificationAction(identifier: AlertAction.ignore, title: "Don't Alert for This App")
         center.setNotificationCategories([UNNotificationCategory(identifier: AlertAction.category, actions: [quit, ignore], intentIdentifiers: [])])
-        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, error in
+            Self.log.notice("notification authorization granted=\(granted, privacy: .public) error=\(String(describing: error), privacy: .public)")
             Task { @MainActor in self?.isAuthorized = granted }
         }
     }
 
-    func evaluate(_ frame: Frame, maxGap: TimeInterval) {
+    private var firedThisFrame: [String] = []
+
+    // Returns the alerts this frame triggered, whether or not macOS lets Herd show notifications, so the decisions are testable.
+    @discardableResult
+    func evaluate(_ frame: Frame, maxGap: TimeInterval) -> [String] {
         resetIfGap(before: frame.date, maxGap: maxGap)
-        guard AlertSettings.isEnabled, isAuthorized else { return }
+        firedThisFrame = []
+        guard AlertSettings.isEnabled else { return [] }
         let candidates = frame.groups.filter { $0.kind != .system && !$0.pids.contains(getpid()) }
         let ignored = AlertSettings.ignoredGroups
         checkRunawayCPU(candidates.filter { !ignored.contains($0.id) }, at: frame.date)
         checkMemoryGrowth(candidates.filter { !ignored.contains($0.id) }, at: frame.date)
         checkPressure(frame, at: frame.date)
         checkHeat(frame.system, at: frame.date)
+        return firedThisFrame
     }
 
     // Two high readings with a pause or sleep between them say nothing about the time in between, so streaks restart.
@@ -153,6 +163,8 @@ final class AlertMonitor {
     private func notify(key: String, group: AppGroup?, at now: Date, title: String, body: String) {
         if let last = lastAlert[key], now.timeIntervalSince(last) < Self.cooldown { return }
         lastAlert[key] = now
+        firedThisFrame.append(key)
+        guard isAuthorized else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -161,6 +173,10 @@ final class AlertMonitor {
             content.categoryIdentifier = AlertAction.category
             content.userInfo = [AlertAction.groupKey: group.id]
         }
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: key, content: content, trigger: nil))
+        Self.log.notice("posting alert \(key, privacy: .public): \(title, privacy: .public)")
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: key, content: content, trigger: nil)) { error in
+            guard let error else { return }
+            Self.log.error("alert \(key, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }

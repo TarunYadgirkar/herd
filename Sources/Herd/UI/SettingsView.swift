@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct SettingsView: View {
     @Environment(MonitorStore.self) private var store
@@ -9,6 +10,8 @@ struct SettingsView: View {
     @AppStorage(DockGraphSettings.enabledKey) private var dockGraph = false
     @AppStorage(AlertSettings.cpuThresholdKey) private var cpuThreshold = AlertSettings.defaultCPUThreshold
     @AppStorage(AlertSettings.cpuMinutesKey) private var cpuMinutes = AlertSettings.defaultCPUMinutes
+
+    @State private var notificationStatus: UNAuthorizationStatus?
 
     private static let thresholds: [Double] = [50, 80, 90, 150, 200, 400]
     private static let durations: [Double] = [1, 3, 5, 10]
@@ -32,6 +35,7 @@ struct SettingsView: View {
             }
             Section("Alerts") {
                 Toggle("Runaway app alerts", isOn: $alertsEnabled)
+                NotificationStatusRow(status: notificationStatus)
                 Picker("CPU above", selection: $cpuThreshold) {
                     ForEach(Self.thresholds, id: \.self) { Text("\(Int($0))%").tag($0) }
                 }
@@ -46,7 +50,38 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .task { notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus }
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+// Alerts only reach the user if macOS allows Herd's notifications, so the state is shown where alerts are configured.
+private struct NotificationStatusRow: View {
+    let status: UNAuthorizationStatus?
+
+    private static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+
+    var body: some View {
+        LabeledContent("Notifications") {
+            HStack(spacing: Theme.itemSpacing) {
+                Image(systemName: isAllowed ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(isAllowed ? Theme.good : Theme.warning)
+                Text(title)
+                if !isAllowed, let url = Self.settingsURL {
+                    Button("Open Settings") { NSWorkspace.shared.open(url) }
+                }
+            }
+        }
+    }
+
+    private var isAllowed: Bool { status == .authorized || status == .provisional }
+
+    private var title: String {
+        switch status {
+        case .authorized, .provisional: "Allowed"
+        case .denied: "Off in System Settings"
+        default: "Not set up"
+        }
     }
 }

@@ -118,3 +118,29 @@ private func makeProject(_ root: URL, marker: String) throws {
         #expect(safe == [1001, 1004])
     }
 }
+
+@Suite(.serialized) struct AlertDecisionTests {
+    private func frame(at seconds: TimeInterval, cpu: Double, groupID: String = "bundle:com.example.runaway") -> Frame {
+        var process = sample(pid: 77, name: "runaway", path: "/Applications/Runaway.app/Contents/MacOS/runaway", arguments: ["runaway"], cwd: nil)
+        process.cpuPercent = cpu
+        let group = AppGroup(
+            id: groupID, name: "Runaway", kind: .apps, bundlePath: "/Applications/Runaway.app", runtime: nil, mainPid: 77,
+            processes: [GroupedProcess(sample: process, title: "runaway", subtitle: nil)], metrics: Metrics(process), project: nil
+        )
+        return Frame(date: Date(timeIntervalSince1970: 1_000_000 + seconds), elapsed: 2, system: SystemSnapshot(), groups: [group], processCount: 1)
+    }
+
+    @MainActor @Test func firesOnlyAfterSustainedLoadAndRestartsAcrossGaps() {
+        let alerts = AlertMonitor()
+        let hold = AlertSettings.cpuMinutes * 60
+        var fired: [String] = []
+        for t in stride(from: 0.0, through: hold - 2, by: 2) { fired += alerts.evaluate(frame(at: t, cpu: 150), maxGap: 6) }
+        #expect(fired.isEmpty)
+        #expect(alerts.evaluate(frame(at: hold, cpu: 150), maxGap: 6) == ["cpu:bundle:com.example.runaway"])
+        #expect(alerts.evaluate(frame(at: hold + 2, cpu: 150), maxGap: 6).isEmpty)
+
+        let fresh = AlertMonitor()
+        _ = fresh.evaluate(frame(at: 0, cpu: 150), maxGap: 6)
+        #expect(fresh.evaluate(frame(at: hold + 600, cpu: 150), maxGap: 6).isEmpty)
+    }
+}

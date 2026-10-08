@@ -22,9 +22,10 @@ final class NetworkSampler: @unchecked Sendable {
     private var lineBuffer: [UInt8] = []
     private var currentBlock: [pid_t: Rate] = [:]
     private var hasHeader = false
-    private var blocksSeen = 0
     private var published: [pid_t: Rate] = [:]
     private var publishedAt: Date = .distantPast
+    private var previousTotals: [pid_t: (bytes: Rate, at: Date)] = [:]
+    private var isBaselineBlock = true
 
     init(interval: TimeInterval = 2) {
         self.interval = max(1, interval.rounded())
@@ -83,7 +84,7 @@ final class NetworkSampler: @unchecked Sendable {
     // nettop block-buffers into pipes and spins at >100% CPU on stdin EOF, so script(1) gives it a pty.
     // script also makes that pty nettop's controlling terminal: if Herd dies, script takes SIGPIPE and nettop SIGHUP.
     private func arguments() -> [String] {
-        ["-q", "/dev/null", Self.nettopPath, "-P", "-x", "-d", "-n", "-s", String(Int(interval)), "-L", "0", "-J", "bytes_in,bytes_out"]
+        ["-q", "/dev/null", Self.nettopPath, "-P", "-x", "-n", "-s", String(Int(interval)), "-L", "0", "-J", "bytes_in,bytes_out"]
     }
 
     private func receive(_ data: Data, from handle: FileHandle) {
@@ -132,7 +133,8 @@ final class NetworkSampler: @unchecked Sendable {
         lineBuffer.removeAll(keepingCapacity: true)
         currentBlock = [:]
         hasHeader = false
-        blocksSeen = 0
+        previousTotals = [:]
+        isBaselineBlock = true
     }
 
     private func consumeLocked(_ bytes: Data) {
@@ -154,19 +156,39 @@ final class NetworkSampler: @unchecked Sendable {
         guard hasHeader, let (pid, bytesIn, bytesOut) = Self.parseRow(line) else { return }
         let existing = currentBlock[pid] ?? (0, 0)
         currentBlock[pid] = (existing.inBps + bytesIn, existing.outBps + bytesOut)
+        guard !isBaselineBlock else { return }
+        publishLocked(pid, totals: currentBlock[pid] ?? (0, 0), at: Date())
     }
 
-    // nettop's first delta-mode block holds cumulative totals, not deltas, so it is discarded.
+    // Each row is a complete cumulative reading, so its rate is published as soon as it's parsed instead of waiting
+    // for the next block's header, which cost one full interval of lag. A process with no previous total wasn't
+    // listed last block, so all of its bytes arrived within the last interval.
+    private func publishLocked(_ pid: pid_t, totals: Rate, at now: Date) {
+        let previous = previousTotals[pid]
+        let before: Rate = previous?.bytes ?? (0, 0)
+        let seconds = max(previous.map { now.timeIntervalSince($0.at) } ?? interval, 1)
+        published[pid] = (max(totals.inBps - before.inBps, 0) / seconds, max(totals.outBps - before.outBps, 0) / seconds)
+        previousTotals[pid] = (totals, now)
+        publishedAt = now
+    }
+
+    // nettop reports cumulative bytes; Herd differences them itself (delta mode hid a new process until its second block).
+    // The first block only sets baselines. Processes missing from a finished block have gone quiet or exited.
     private func finishBlockLocked() {
         defer {
             currentBlock = [:]
             hasHeader = true
         }
         guard hasHeader else { return }
-        blocksSeen += 1
-        guard blocksSeen > 1 else { return }
-        published = currentBlock.mapValues { ($0.inBps / interval, $0.outBps / interval) }
-        publishedAt = Date()
+        let now = Date()
+        if isBaselineBlock {
+            previousTotals = currentBlock.mapValues { ($0, now) }
+            isBaselineBlock = false
+            return
+        }
+        let listed = Set(currentBlock.keys)
+        published = published.filter { listed.contains($0.key) }
+        previousTotals = previousTotals.filter { listed.contains($0.key) }
     }
 
     private static func parseRow(_ line: String) -> (pid_t, Double, Double)? {
