@@ -2,7 +2,6 @@ import SwiftUI
 
 struct PerformanceCard<Accessory: View, Content: View>: View {
     let title: String
-    var help: String?
     @ViewBuilder let accessory: Accessory
     @ViewBuilder let content: Content
 
@@ -11,7 +10,6 @@ struct PerformanceCard<Accessory: View, Content: View>: View {
             HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
                 Text(title)
                     .font(.headlineText)
-                    .help(help ?? "")
                 Spacer(minLength: Theme.groupSpacing)
                 accessory
             }
@@ -24,19 +22,18 @@ struct PerformanceCard<Accessory: View, Content: View>: View {
 }
 
 extension PerformanceCard where Accessory == EmptyView {
-    init(title: String, help: String? = nil, @ViewBuilder content: () -> Content) {
-        self.init(title: title, help: help, accessory: { EmptyView() }, content: content)
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.init(title: title, accessory: { EmptyView() }, content: content)
     }
 }
 
 struct ChartCard<Content: View>: View {
     let title: String
-    var help: String?
     let legend: [LegendItem]
     @ViewBuilder let content: Content
 
     var body: some View {
-        PerformanceCard(title: title, help: help) {
+        PerformanceCard(title: title) {
             ChartLegend(items: legend)
         } content: {
             content
@@ -144,7 +141,9 @@ struct PerformanceStat: Identifiable {
     let label: String
     let value: String
     var help: String?
-    var color: Color?
+    var level: Double?
+    var tint: Color?
+    var swatch: Color?
 
     var id: String { label }
 }
@@ -163,15 +162,21 @@ struct StatGrid: View {
             ForEach(stats) { stat in
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
-                        if let color = stat.color { Swatch(color: color) }
+                        if let swatch = stat.swatch { Swatch(color: swatch) }
                         Text(stat.label)
                             .font(.captionText)
                             .foregroundStyle(.secondary)
                     }
-                    Text(stat.value)
-                        .font(.metric)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                    HStack(spacing: 5) {
+                        if let level = stat.level {
+                            LevelRing(level: level, color: stat.tint ?? Theme.accent)
+                        }
+                        Text(stat.value)
+                            .font(.metric)
+                            .foregroundStyle(stat.level == nil ? stat.tint ?? .primary : .primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
                 }
                 .help(stat.help ?? "")
                 .accessibilityElement(children: .combine)
@@ -180,16 +185,13 @@ struct StatGrid: View {
     }
 }
 
-struct HeadlineSymbol {
-    let name: String
-    let color: Color
-}
-
 struct PerformanceHeader<Badge: View>: View {
     let title: String
     let value: String
-    var caption: String?
-    var symbol: HeadlineSymbol?
+    var symbol: String?
+    var symbolTint: Color = .secondary
+    var symbolLabel: String?
+    var caption: Text?
     let stats: [PerformanceStat]
     let range: Binding<HistoryRange>
     @ViewBuilder let badge: Badge
@@ -207,19 +209,20 @@ struct PerformanceHeader<Badge: View>: View {
             }
             HStack(alignment: .top, spacing: Theme.groupSpacing) {
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
                         if let symbol {
-                            Image(systemName: symbol.name)
-                                .font(.sectionTitle)
-                                .foregroundStyle(symbol.color)
+                            Image(systemName: symbol)
+                                .foregroundStyle(symbolTint)
+                                .accessibilityLabel(symbolLabel ?? "")
+                                .accessibilityHidden(symbolLabel == nil)
                         }
                         Text(value)
-                            .font(.display)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
+                    .font(.display)
                     if let caption {
-                        Text(caption)
+                        caption
                             .font(.captionText.monospacedDigit())
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -235,10 +238,19 @@ struct PerformanceHeader<Badge: View>: View {
 
 extension PerformanceHeader where Badge == EmptyView {
     init(
-        title: String, value: String, caption: String? = nil, symbol: HeadlineSymbol? = nil,
-        stats: [PerformanceStat], range: Binding<HistoryRange>
+        title: String,
+        value: String,
+        symbol: String? = nil,
+        symbolTint: Color = .secondary,
+        symbolLabel: String? = nil,
+        caption: Text? = nil,
+        stats: [PerformanceStat],
+        range: Binding<HistoryRange>
     ) {
-        self.init(title: title, value: value, caption: caption, symbol: symbol, stats: stats, range: range, badge: { EmptyView() })
+        self.init(
+            title: title, value: value, symbol: symbol, symbolTint: symbolTint, symbolLabel: symbolLabel,
+            caption: caption, stats: stats, range: range, badge: { EmptyView() }
+        )
     }
 }
 
@@ -254,21 +266,40 @@ struct RangePicker: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .fixedSize()
-        .help("Choose how much history the graphs show")
     }
 }
 
 struct SectionMessage: View {
     let title: String
     let symbol: String
-    let message: String
+    var message: String?
 
     var body: some View {
         ContentUnavailableView {
             Label(title, systemImage: symbol)
         } description: {
-            Text(message)
+            if let message { Text(message) }
         }
         .frame(maxWidth: .infinity, minHeight: 320)
+    }
+}
+
+struct LevelRing: View {
+    let level: Double
+    let color: Color
+
+    private static let size: CGFloat = 12
+    private static let lineWidth: CGFloat = 2.5
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Theme.track, lineWidth: Self.lineWidth)
+            Circle()
+                .trim(from: 0, to: min(max(level, 0), 1))
+                .stroke(color, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: Self.size, height: Self.size)
+        .accessibilityHidden(true)
     }
 }

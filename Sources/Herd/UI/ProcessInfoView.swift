@@ -12,11 +12,7 @@ struct ProcessInfoView: View {
             ProcessInfoContent(sample: sample)
                 .onAppear { snapshot = sample }
         } else {
-            ContentUnavailableView(
-                "This process has exited.",
-                systemImage: "xmark.circle",
-                description: Text("Herd can only show details for processes that are running.")
-            )
+            ContentUnavailableView("Exited", systemImage: "xmark.circle")
             .navigationTitle("Process Info")
         }
     }
@@ -71,15 +67,16 @@ private struct ProcessInfoContent: View {
             if let details {
                 DetailSections(sample: sample, details: details, groupName: groupName)
             } else {
-                ProgressView("Reading process details")
+                ProgressView()
+                    .controlSize(.small)
                     .frame(maxWidth: .infinity)
+                    .accessibilityLabel("Reading process details")
             }
         }
         .formStyle(.grouped)
         .navigationTitle("\(sample.name) (\(String(sample.pid)))")
         .toolbar {
             Button("Refresh", systemImage: "arrow.clockwise") { refreshToken += 1 }
-                .help("Read this process's details again")
         }
         .task(id: LoadKey(id: sample.id, token: refreshToken)) { await loadLoop() }
         .background(WindowVisibilityReader { store.setSurface("process-info:\(sample.id)", visible: $0) })
@@ -126,7 +123,7 @@ private struct ProcessInfoContent: View {
             switch result {
             case .report(let url):
                 NSWorkspace.shared.open(url)
-                show("Opened the sample report for \(sample.name).")
+                show("Opened sample report")
             case .failed(let message):
                 show(message)
             }
@@ -141,11 +138,11 @@ private struct ProcessInfoContent: View {
     // The main window owns ActionController's dialog, so this window confirms on its own and then acts on what is running now.
     private func request(_ action: ProcessAction) {
         guard let current = store.liveProcess(id: sample.id) else {
-            show("\(sample.name) has already exited.")
+            show("\(sample.name) exited")
             return
         }
         guard !ProcessActions.isProtected(current, for: action) else {
-            show("\(sample.name) keeps macOS running, so Herd won't \(action.title.lowercased()) it.")
+            show("\(sample.name) is protected by macOS")
             return
         }
         let groupName = store.groupName(containing: sample.id) ?? sample.name
@@ -155,7 +152,7 @@ private struct ProcessInfoContent: View {
     private func perform(_ pending: PendingAction) {
         pendingAction = nil
         guard let current = store.liveProcess(id: sample.id) else {
-            show("\(sample.name) has already exited.")
+            show("\(sample.name) exited")
             return
         }
         show(ProcessActions.perform(pending.action, on: current).message(for: pending.action, name: current.name))
@@ -188,7 +185,7 @@ private struct InfoHeader: View {
                         .font(.sectionTitle)
                         .lineLimit(2)
                         .textSelection(.enabled)
-                    Text(subtitle)
+                    subtitle
                         .font(.subheadText.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -197,9 +194,15 @@ private struct InfoHeader: View {
         }
     }
 
-    private var subtitle: String {
-        guard let groupName, groupName != sample.name else { return "PID \(sample.pid)" }
-        return "PID \(sample.pid) in \(groupName)"
+    private var subtitle: some View {
+        HStack(spacing: Theme.itemSpacing) {
+            Text("PID \(String(sample.pid))")
+            if let groupName, groupName != sample.name {
+                Label(groupName, systemImage: "square.stack")
+                    .lineLimit(1)
+                    .accessibilityLabel("Part of \(groupName)")
+            }
+        }
     }
 
     @ViewBuilder
@@ -229,7 +232,6 @@ private struct InfoHeader: View {
             }
             .buttonStyle(.borderless)
             .controlSize(.small)
-            .help("Reveal this process's executable in Finder")
         }
     }
 }
@@ -251,11 +253,9 @@ private struct InfoActions: View {
             efficiencyToggle.disabled(!isRunning || !canChangePriority)
             Spacer(minLength: 0)
             Button(ProcessAction.quit.title) { onAction(.quit) }
-                .help("Ask \(sample.name) to quit normally")
                 .disabled(!isRunning || ProcessActions.isProtected(sample, for: .quit))
             Button(ProcessAction.forceQuit.title) { onAction(.forceQuit) }
                 .tint(Theme.critical)
-                .help("Stop \(sample.name) right away. Unsaved work is lost.")
                 .disabled(!isRunning || ProcessActions.isProtected(sample, for: .forceQuit))
         }
         .buttonStyle(.bordered)
@@ -267,14 +267,13 @@ private struct InfoActions: View {
         if isSampling {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
-                Text("Sampling for 3 seconds")
-                    .font(.calloutText)
-                    .foregroundStyle(.secondary)
+                Image(systemName: "waveform.path.ecg").foregroundStyle(Theme.accent)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Sampling")
         } else {
-            Button("Sample Process", systemImage: "waveform.path.ecg", action: onSample)
-                .help("Record what each thread of \(sample.name) is doing for 3 seconds, then open the report")
+            Button("Sample", systemImage: "waveform.path.ecg", action: onSample)
+                .help("3-second thread sample")
         }
     }
 
@@ -285,13 +284,11 @@ private struct InfoActions: View {
 
     private var efficiencyToggle: some View {
         Toggle(isOn: Binding(get: { isEfficiencyMode ?? false }, set: { onEfficiency($0) })) {
-            Label("Efficiency Mode", systemImage: "leaf")
+            Label("Efficiency", systemImage: "leaf")
         }
         .toggleStyle(.button)
         .tint(Theme.accent)
-        .help(canChangePriority
-            ? "Run \(sample.name) on the efficiency cores with lower disk priority. It uses less power and runs slower."
-            : "macOS only lets Herd change the priority of your own apps")
+        .help(canChangePriority ? "Efficiency cores, low disk priority" : "Your own processes only")
     }
 }
 
@@ -303,16 +300,21 @@ private struct LiveStats: View {
     var body: some View {
         if let live = store.observedProcess(id: processID) {
             VStack(alignment: .leading, spacing: Theme.itemSpacing) {
-                if live.isSuspended { StatePill(text: "Paused", color: Theme.warning) }
+                if live.isSuspended {
+                    Image(systemName: "pause.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(Theme.warning)
+                        .accessibilityLabel("Paused")
+                }
                 HStack(spacing: Theme.itemSpacing) {
                     StatTile(title: "CPU", value: live.isUnavailable ? nil : prefix(live) + Format.percent(live.cpuPercent))
                     StatTile(title: "Memory", value: live.isUnavailable ? nil : prefix(live) + Format.bytes(live.memoryBytes))
-                    StatTile(title: "Power", value: live.isApproximate ? nil : Format.watts(live.energyWatts))
+                    StatTile(title: "CPU Power", value: live.isApproximate ? nil : Format.watts(live.energyWatts))
                     StatTile(title: "Threads", value: live.threads > 0 ? String(live.threads) : nil)
                 }
             }
         } else {
-            Label("This process has exited.", systemImage: "xmark.circle")
+            Label("Exited", systemImage: "xmark.circle")
                 .foregroundStyle(.secondary)
         }
     }

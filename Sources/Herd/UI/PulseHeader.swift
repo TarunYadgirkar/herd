@@ -2,13 +2,9 @@ import SwiftUI
 
 struct PulseHeader: View {
     @Environment(MonitorStore.self) private var store
-    @Environment(ActionController.self) private var actions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
-            PulseTiles(system: store.system, history: store.systemHistory)
-            CulpritLine(groups: store.groups, isReady: store.hasFirstFrame, actions: actions)
-        }
+        PulseTiles(system: store.system, history: store.systemHistory)
         .padding(.horizontal, Theme.innerPadding)
         .padding(.vertical, Theme.itemSpacing)
         .redacted(reason: store.hasFirstFrame ? [] : .placeholder)
@@ -27,7 +23,7 @@ private enum TileKind: Int, Identifiable, Comparable {
         case .memory: 210
         case .gpu: 130
         case .network, .disk: 150
-        case .power: 120
+        case .power: 150
         }
     }
 
@@ -40,13 +36,27 @@ private struct PulseTiles: View {
 
     private static let minimumTiles = 2
 
+    @State private var width: CGFloat = 0
+
+    // ViewThatFits lays out every candidate row on each update; counting against fixed ideal widths is one arithmetic pass.
     var body: some View {
         let kinds = prioritizedKinds
-        ViewThatFits(in: .horizontal) {
-            ForEach(Array(stride(from: kinds.count, through: Self.minimumTiles, by: -1)), id: \.self) { count in
-                TileRow(kinds: kinds.prefix(count).sorted(), system: system, history: history)
-            }
+        TileRow(kinds: kinds.prefix(fittingCount(kinds)).sorted(), system: system, history: history)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .clipped()
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { width = $0 })
+    }
+
+    private func fittingCount(_ kinds: [TileKind]) -> Int {
+        var used: CGFloat = 0
+        var count = 0
+        for kind in kinds {
+            let next = used + kind.idealWidth + (count > 0 ? Theme.itemSpacing : 0)
+            guard next <= width else { break }
+            used = next
+            count += 1
         }
+        return max(count, Self.minimumTiles)
     }
 
     private var prioritizedKinds: [TileKind] {
@@ -84,38 +94,27 @@ private struct TileRow: View {
             RateTile(
                 kind: .network, title: "Network", quietCeiling: 102_400,
                 down: RateLine(name: "Download", rate: system.netInBps, series: history.netIn, color: Theme.netIn),
-                up: RateLine(name: "Upload", rate: system.netOutBps, series: history.netOut, color: Theme.netOut),
-                help: "Data coming in and going out over all network connections."
+                up: RateLine(name: "Upload", rate: system.netOutBps, series: history.netOut, color: Theme.netOut)
             )
         case .disk:
             RateTile(
                 kind: .disk, title: "Disk", quietCeiling: 1_048_576,
                 down: RateLine(name: "Read", rate: system.diskReadBps, series: history.diskRead, color: Theme.netIn),
-                up: RateLine(name: "Write", rate: system.diskWriteBps, series: history.diskWrite, color: Theme.netOut),
-                help: "Data read from and written to your drives."
+                up: RateLine(name: "Write", rate: system.diskWriteBps, series: history.diskWrite, color: Theme.netOut)
             )
         case .power: PowerTile(battery: system.battery, thermal: system.thermal)
         }
     }
 }
 
-private struct TileTrace {
-    let series: Series
-    let color: Color
-}
-
 private struct Tile<Accessory: View, Content: View>: View {
     let title: String
     let kind: TileKind
     let summary: String
-    let help: String
-    var traces: [TileTrace] = []
-    var traceCeiling: Double?
     @ViewBuilder let accessory: Accessory
     @ViewBuilder let content: Content
 
     private static var headerHeight: CGFloat { 18 }
-    private static var traceHeight: CGFloat { 34 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -127,43 +126,25 @@ private struct Tile<Accessory: View, Content: View>: View {
                 accessory
             }
             .frame(minHeight: Self.headerHeight)
-            HStack(alignment: .bottom, spacing: Theme.groupSpacing) {
-                content
-                if !traces.isEmpty { trace }
-            }
+            content
         }
         .padding(.horizontal, Theme.innerPadding)
         .padding(.vertical, Theme.itemSpacing)
         .frame(minWidth: kind.idealWidth, idealWidth: kind.idealWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .surface()
-        .help(help)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(summary)
-    }
-
-    private var trace: some View {
-        ZStack {
-            ForEach(traces.indices, id: \.self) { index in
-                Sparkline(values: traces[index].series.values, color: traces[index].color, ceiling: traceCeiling, fillsWidth: true)
-            }
-        }
-        .frame(minWidth: 0, maxWidth: .infinity)
-        .frame(height: Self.traceHeight)
-        .clipped()
     }
 }
 
 extension Tile where Accessory == EmptyView {
-    init(
-        title: String, kind: TileKind, summary: String, help: String,
-        traces: [TileTrace] = [], traceCeiling: Double? = nil,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.init(
-            title: title, kind: kind, summary: summary, help: help, traces: traces, traceCeiling: traceCeiling,
-            accessory: { EmptyView() }, content: content
-        )
+    init(title: String, kind: TileKind, summary: String, @ViewBuilder content: () -> Content) {
+        self.init(title: title, kind: kind, summary: summary, accessory: { EmptyView() }, content: content)
     }
+}
+
+private enum Spark {
+    static let height: CGFloat = 34
 }
 
 private struct CPUTile: View {
@@ -176,17 +157,20 @@ private struct CPUTile: View {
         let percent = Format.percent(system.cpuTotal * 100)
         Tile(
             title: "CPU", kind: .cpu,
-            summary: "CPU, \(percent) in use across \(system.perCoreUsage.count) cores",
-            help: "How much of all CPU cores is in use. Each small bar is one core.",
-            traces: [TileTrace(series: history, color: Theme.accent)],
-            traceCeiling: 1
+            summary: "CPU, \(percent) in use across \(system.perCoreUsage.count) cores"
         ) {
             CoreStrip(usage: system.perCoreUsage)
         } content: {
-            Text(percent)
-                .font(.display)
-                .foregroundStyle(system.cpuTotal > Self.hotThreshold ? Theme.hot : .primary)
-                .fixedSize()
+            HStack(alignment: .bottom, spacing: Theme.groupSpacing) {
+                Text(percent)
+                    .font(.display)
+                    .foregroundStyle(system.cpuTotal > Self.hotThreshold ? Theme.hot : .primary)
+                    .fixedSize()
+                Sparkline(values: history.values, ceiling: 1, fillsWidth: true)
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                    .frame(height: Spark.height)
+                    .clipped()
+            }
         }
     }
 }
@@ -238,13 +222,16 @@ private struct GPUTile: View {
 
     var body: some View {
         let percent = Format.percent(utilization * 100)
-        Tile(
-            title: "GPU", kind: .gpu, summary: "GPU, \(percent) busy", help: "How busy the graphics processor is.",
-            traces: [TileTrace(series: history, color: Theme.accent)], traceCeiling: 1
-        ) {
-            Text(percent)
-                .font(.display)
-                .fixedSize()
+        Tile(title: "GPU", kind: .gpu, summary: "GPU, \(percent) busy") {
+            HStack(alignment: .bottom, spacing: Theme.groupSpacing) {
+                Text(percent)
+                    .font(.display)
+                    .fixedSize()
+                Sparkline(values: history.values, ceiling: 1, fillsWidth: true)
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                    .frame(height: Spark.height)
+                    .clipped()
+            }
         }
     }
 }
@@ -256,17 +243,15 @@ private struct MemoryTile: View {
     private static let heavySwapShare = 0.5
 
     var body: some View {
-        Tile(
-            title: "Memory", kind: .memory, summary: summary,
-            help: "Memory pressure shows how hard macOS is working to find free memory. Swap is memory moved to disk, which is much slower."
-        ) {
-            StatePill(text: pressureTitle, color: Theme.pressureColor(system.pressure))
+        Tile(title: "Memory", kind: .memory, summary: summary) {
+            if system.pressure != .normal {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.captionText)
+                    .foregroundStyle(Theme.pressureColor(system.pressure))
+            }
         } content: {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(Format.bytes(system.memoryUsed)).font(.displaySmall)
-                    Text("of \(totalLabel)").font(.captionText.monospacedDigit()).foregroundStyle(.secondary)
-                }
+                Text(Format.bytes(system.memoryUsed)).font(.displaySmall)
                 HStack(spacing: Theme.itemSpacing) {
                     MemoryBar(system: system)
                     if system.swapUsed > 0 { swapLabel }
@@ -276,10 +261,13 @@ private struct MemoryTile: View {
     }
 
     private var swapLabel: some View {
-        Text("Swap \(Format.bytes(system.swapUsed))")
-            .font(.metricSmall)
-            .foregroundStyle(isSwapHeavy ? Theme.warning : .secondary)
-            .fixedSize()
+        HStack(spacing: 3) {
+            Image(systemName: "externaldrive.fill").font(.footnoteText)
+            Text(Format.bytes(system.swapUsed)).font(.metricSmall)
+        }
+        .foregroundStyle(isSwapHeavy ? Theme.warning : .secondary)
+        .fixedSize()
+        .help("Swap")
     }
 
     private var isSwapHeavy: Bool {
@@ -290,23 +278,22 @@ private struct MemoryTile: View {
         String(format: "%.0f GB", Double(system.memoryTotal) / Self.gigabyte)
     }
 
-    private var pressureTitle: String {
+    private var pressureName: String {
         switch system.pressure {
-        case .normal: "Normal"
-        case .warning: "Under pressure"
-        case .critical: "Critical"
+        case .normal: "normal"
+        case .warning: "high"
+        case .critical: "critical"
         }
     }
 
     private var summary: String {
         let swap = system.swapUsed > 0 ? ", swap \(Format.bytes(system.swapUsed))" : ""
-        return "Memory, \(Format.bytes(system.memoryUsed)) of \(totalLabel) used, pressure \(pressureTitle)\(swap)"
+        return "Memory, \(Format.bytes(system.memoryUsed)) of \(totalLabel) used, pressure \(pressureName)\(swap)"
     }
 }
 
 private struct MemorySegment: Identifiable {
     let name: String
-    let explanation: String
     let bytes: UInt64
     let color: Color
 
@@ -338,10 +325,10 @@ private struct MemoryBar: View {
 
     private var segments: [MemorySegment] {
         [
-            MemorySegment(name: "App memory", explanation: "used by open apps and their helpers.", bytes: system.appMemory, color: Theme.accent),
-            MemorySegment(name: "Wired", explanation: "reserved by macOS itself and can't be freed.", bytes: system.wiredMemory, color: Theme.netOut),
-            MemorySegment(name: "Compressed", explanation: "squeezed to make room. A lot of it means memory is tight.", bytes: system.compressedMemory, color: Theme.warm),
-            MemorySegment(name: "Cached files", explanation: "recently used files kept for speed. macOS frees these first when apps need room.", bytes: system.cachedFiles, color: Theme.neutral),
+            MemorySegment(name: "App memory", bytes: system.appMemory, color: Theme.accent),
+            MemorySegment(name: "Wired", bytes: system.wiredMemory, color: Theme.netOut),
+            MemorySegment(name: "Compressed", bytes: system.compressedMemory, color: Theme.warm),
+            MemorySegment(name: "Cached files", bytes: system.cachedFiles, color: Theme.neutral),
         ]
     }
 
@@ -351,7 +338,7 @@ private struct MemoryBar: View {
     }
 
     private var tooltip: String {
-        segments.map { "\($0.name), \(Format.bytes($0.bytes)): \($0.explanation)" }.joined(separator: "\n")
+        segments.map { "\($0.name) \(Format.bytes($0.bytes))" }.joined(separator: "\n")
     }
 }
 
@@ -368,21 +355,26 @@ private struct RateTile: View {
     let quietCeiling: Double
     let down: RateLine
     let up: RateLine
-    let help: String
 
     var body: some View {
         Tile(
             title: title, kind: kind,
-            summary: "\(title), \(down.name.lowercased()) \(Format.rate(down.rate)), \(up.name.lowercased()) \(Format.rate(up.rate))",
-            help: help,
-            traces: [TileTrace(series: down.series, color: down.color), TileTrace(series: up.series, color: up.color)],
-            traceCeiling: sharedCeiling
+            summary: "\(title), \(down.name.lowercased()) \(Format.rate(down.rate)), \(up.name.lowercased()) \(Format.rate(up.rate))"
         ) {
-            VStack(alignment: .leading, spacing: 2) {
-                rateText(down, symbol: "arrow.down")
-                rateText(up, symbol: "arrow.up")
+            HStack(alignment: .bottom, spacing: Theme.groupSpacing) {
+                VStack(alignment: .leading, spacing: 2) {
+                    rateText(down, symbol: "arrow.down")
+                    rateText(up, symbol: "arrow.up")
+                }
+                .fixedSize()
+                ZStack {
+                    Sparkline(values: down.series.values, color: down.color, ceiling: sharedCeiling, fillsWidth: true)
+                    Sparkline(values: up.series.values, color: up.color, ceiling: sharedCeiling, fillsWidth: true)
+                }
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .frame(height: Spark.height)
+                .clipped()
             }
-            .fixedSize()
         }
     }
 
@@ -405,34 +397,28 @@ private struct PowerTile: View {
     private static let lowBattery = 20.0
 
     var body: some View {
-        Tile(title: battery == nil ? "Temperature" : "Battery", kind: .power, summary: summary, help: help) {
-            if let pill = thermalPill { StatePill(text: pill.title, color: pill.color) }
+        Tile(title: battery == nil ? "Temperature" : "Battery", kind: .power, summary: summary) {
+            ThermalGlyph(thermal: thermal)
         } content: {
             if let battery {
                 batteryContent(battery)
             } else {
-                Text(thermalDetail)
-                    .font(.captionText)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                ThermalGlyph(thermal: thermal).font(.displaySmall)
             }
         }
     }
 
     private func batteryContent(_ battery: BatteryInfo) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .center, spacing: 6) {
-                Image(systemName: Self.symbol(for: battery))
-                    .font(.calloutText)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(glyphColor(battery))
-                Text(Format.percent(battery.percent)).font(.display)
-            }
-            if let remaining = Self.remaining(of: battery) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: Self.symbol(for: battery))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(glyphColor(battery))
+            Text(Format.percent(battery.percent)).font(.display)
+            if let remaining = Self.remaining(battery) {
                 Text(remaining)
-                    .font(.captionText.monospacedDigit())
+                    .font(.metricSmall)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .fixedSize()
             }
         }
     }
@@ -447,7 +433,7 @@ private struct PowerTile: View {
     }
 
     private static func symbol(for battery: BatteryInfo) -> String {
-        if battery.isOnAC { return "battery.100percent.bolt" }
+        if battery.isCharging || battery.isOnAC { return "battery.100percent.bolt" }
         switch battery.percent {
         case 88...: return "battery.100percent"
         case 63..<88: return "battery.75percent"
@@ -457,154 +443,53 @@ private struct PowerTile: View {
         }
     }
 
-    private static func remaining(of battery: BatteryInfo) -> String? {
-        guard let minutes = battery.minutesRemaining, battery.isCharging || !battery.isOnAC else { return nil }
-        let duration = Format.duration(TimeInterval(minutes * 60))
-        return battery.isCharging ? "Full in \(duration)" : "\(duration) left"
+    private static func remaining(_ battery: BatteryInfo) -> String? {
+        guard !battery.isOnAC else { return nil }
+        return battery.minutesRemaining.map { Format.duration(TimeInterval($0 * 60)) }
     }
 
     private static func status(of battery: BatteryInfo) -> String {
-        let remaining = battery.minutesRemaining.map { Format.duration(TimeInterval($0 * 60)) }
-        if battery.isCharging { return remaining.map { "Full in \($0)" } ?? "Charging" }
-        if battery.isOnAC { return "Plugged in" }
-        return remaining.map { "\($0) left" } ?? "On battery"
-    }
-
-    private var thermalPill: (title: String, color: Color)? {
-        switch thermal {
-        case .nominal: nil
-        case .fair: ("Warm", Theme.warning)
-        case .serious: ("Hot", Theme.critical)
-        case .critical: ("Throttling", Theme.critical)
-        @unknown default: nil
-        }
-    }
-
-    private var thermalDetail: String {
-        switch thermal {
-        case .serious, .critical: "macOS is slowing the CPU to cool down."
-        default: "Running warmer than usual."
-        }
-    }
-
-    private var help: String {
-        thermalPill == nil
-            ? "Battery charge and time remaining."
-            : "When your Mac gets hot, macOS slows the CPU to cool it down, which makes everything feel slower."
+        if battery.isCharging { return "charging" }
+        if battery.isOnAC { return "plugged in" }
+        return remaining(battery).map { "\($0) remaining" } ?? "on battery"
     }
 
     private var summary: String {
         let charge = battery.map { "Battery \(Format.percent($0.percent)), \(Self.status(of: $0))" }
-        let heat = thermalPill.map { "Temperature \($0.title)" }
+        let heat = ThermalGlyph.spokenState(thermal).map { "Temperature \($0)" }
         return [charge, heat].compactMap { $0 }.joined(separator: ", ")
     }
 }
 
-private struct CulpritLine: View {
-    let groups: [AppGroup]
-    let isReady: Bool
-    let actions: ActionController
-
-    private static let cpuThreshold = 15.0
-    private static let rowHeight: CGFloat = 26
+private struct ThermalGlyph: View {
+    let thermal: ProcessInfo.ThermalState
 
     var body: some View {
-        HStack(spacing: Theme.itemSpacing) {
-            if isReady {
-                culprits
-            } else {
-                Text("Checking which apps use the most CPU and memory")
-                    .font(.calloutText)
-                    .foregroundStyle(.secondary)
+        if let color {
+            HStack(spacing: 2) {
+                Image(systemName: thermal == .fair ? "thermometer.medium" : "thermometer.high")
+                if isThrottling { Image(systemName: "tortoise.fill") }
             }
-            Spacer(minLength: 0)
-        }
-        .frame(minHeight: Self.rowHeight)
-    }
-
-    @ViewBuilder
-    private var culprits: some View {
-        let cpu = topCPU
-        let memory = topMemory
-        if let cpu, let memory, cpu.id == memory.id {
-            CulpritChip(group: cpu, readings: [cpuReading(cpu), memoryReading(memory)], actions: actions)
-        } else {
-            if let cpu { CulpritChip(group: cpu, readings: [cpuReading(cpu)], actions: actions) }
-            if let memory { CulpritChip(group: memory, readings: [memoryReading(memory)], actions: actions) }
+            .foregroundStyle(color)
+            .accessibilityLabel(Self.spokenState(thermal) ?? "")
         }
     }
 
-    private var topCPU: AppGroup? {
-        groups.max { $0.metrics.cpu < $1.metrics.cpu }.flatMap { $0.metrics.cpu >= Self.cpuThreshold ? $0 : nil }
-    }
+    private var isThrottling: Bool { thermal == .serious || thermal == .critical }
 
-    private var topMemory: AppGroup? {
-        groups.max { $0.metrics.memory < $1.metrics.memory }.flatMap { $0.metrics.memory > 0 ? $0 : nil }
-    }
-
-    private func cpuReading(_ group: AppGroup) -> CulpritReading {
-        let percent = Format.percent(group.metrics.cpu)
-        let count = group.processes.count
-        let detail = count > 1 ? "\(percent) across \(count) processes" : percent
-        return CulpritReading(column: .cpu, value: detail, phrase: "the most CPU, \(detail)")
-    }
-
-    private func memoryReading(_ group: AppGroup) -> CulpritReading {
-        let bytes = Format.bytes(group.metrics.memory)
-        return CulpritReading(column: .memory, value: bytes, phrase: "the most memory, \(bytes)")
-    }
-}
-
-private struct CulpritReading: Identifiable {
-    let column: MetricColumn
-    let value: String
-    let phrase: String
-
-    var id: MetricColumn { column }
-}
-
-private struct CulpritChip: View {
-    let group: AppGroup
-    let readings: [CulpritReading]
-    let actions: ActionController
-
-    var body: some View {
-        HStack(spacing: Theme.itemSpacing) {
-            HStack(spacing: 6) {
-                GroupIcon(group: group, size: 16)
-                Text(group.name)
-                    .font(.calloutText.weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                ForEach(readings) { reading in
-                    Label {
-                        Text(reading.value).font(.metric)
-                    } icon: {
-                        Image(systemName: reading.column.symbol).foregroundStyle(Theme.warm)
-                    }
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(sentence)
-            if ProcessActions.canAct(on: group) {
-                Button("Quit") { actions.request(.quit, on: group) }
-                    .buttonStyle(.borderless)
-                    .font(.calloutText.weight(.medium))
-                    .help("Quit \(group.name)")
-                    .accessibilityLabel("Quit \(group.name)")
-            }
+    private var color: Color? {
+        switch thermal {
+        case .fair: Theme.warning
+        case .serious, .critical: Theme.critical
+        default: nil
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 10)
-        .padding(.vertical, 4)
-        .background(Theme.surface, in: Capsule())
-        .help(sentence)
     }
 
-    private var sentence: String {
-        "\(group.name) is using " + readings.map(\.phrase).joined(separator: " and ")
+    static func spokenState(_ thermal: ProcessInfo.ThermalState) -> String? {
+        switch thermal {
+        case .fair: "warm"
+        case .serious, .critical: "hot, CPU slowed to cool down"
+        default: nil
+        }
     }
 }

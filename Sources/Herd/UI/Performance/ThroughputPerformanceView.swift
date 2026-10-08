@@ -10,13 +10,6 @@ enum ThroughputKind {
         }
     }
 
-    var chartTitle: String {
-        switch self {
-        case .network: "Network activity"
-        case .disk: "Disk activity"
-        }
-    }
-
     var inName: String {
         switch self {
         case .network: "Download"
@@ -45,13 +38,6 @@ enum ThroughputKind {
         }
     }
 
-    var help: String {
-        switch self {
-        case .network: "Download shows above the line and upload below it, across all network connections."
-        case .disk: "Reads show above the line and writes below it, across all drives."
-        }
-    }
-
     func inRate(_ point: SystemPoint) -> Double {
         self == .network ? point.netIn : point.diskRead
     }
@@ -74,29 +60,29 @@ struct ThroughputPerformanceView: View {
         PerformanceHeader(
             title: kind.title,
             value: Format.rate(live.in),
-            symbol: HeadlineSymbol(name: "arrow.down", color: ChartPalette.download),
-            stats: stats(outRate: live.out),
+            symbol: "arrow.down",
+            symbolTint: ChartPalette.download,
+            symbolLabel: kind.inName,
+            caption: Text("\(Image(systemName: "arrow.up")) \(Format.rate(live.out))").foregroundStyle(ChartPalette.upload),
+            stats: stats,
             range: context.range
         )
         PerformanceChart(
-            title: kind.chartTitle,
+            title: "Throughput",
             series: [
                 ChartSeries(name: kind.inName, color: ChartPalette.download, values: context.values { kind.inRate($0) }),
                 ChartSeries(name: kind.outName, color: ChartPalette.upload, values: context.values { kind.outRate($0) }, direction: -1),
             ],
             unit: .rate,
             context: context,
-            height: 220,
-            help: kind.help
+            height: 220
         )
     }
 
-    private func stats(outRate: Double) -> [PerformanceStat] {
-        let window = context.historyRange.title
-        return [
-            PerformanceStat(label: "\(kind.outName) now", value: Format.rate(outRate), color: ChartPalette.upload),
-            PerformanceStat(label: kind.inTotalLabel, value: PerformanceFormat.bytes(context.total { kind.inRate($0) }), help: "Total over the last \(window)"),
-            PerformanceStat(label: kind.outTotalLabel, value: PerformanceFormat.bytes(context.total { kind.outRate($0) }), help: "Total over the last \(window)"),
+    private var stats: [PerformanceStat] {
+        [
+            PerformanceStat(label: kind.inTotalLabel, value: PerformanceFormat.bytes(context.total { kind.inRate($0) })),
+            PerformanceStat(label: kind.outTotalLabel, value: PerformanceFormat.bytes(context.total { kind.outRate($0) })),
             PerformanceStat(label: "Peak \(kind.inName.lowercased())", value: Format.rate(context.peak { kind.inRate($0) } ?? 0)),
             PerformanceStat(label: "Peak \(kind.outName.lowercased())", value: Format.rate(context.peak { kind.outRate($0) } ?? 0)),
         ]

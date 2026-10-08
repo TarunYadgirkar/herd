@@ -29,6 +29,10 @@ enum PerformanceFormat {
         String(format: "%.0f °C", value)
     }
 
+    static func gigahertz(_ megahertz: Double) -> String {
+        String(format: "%.2f GHz", megahertz / 1000)
+    }
+
     static func megahertz(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0))) + " MHz"
     }

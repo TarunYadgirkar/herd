@@ -13,7 +13,7 @@ struct ReportedUsage: Sendable {
 // Root and other-user processes hide their counters from Herd, but /usr/bin/top holds com.apple.system-task-ports.read.
 // One long-lived top is far cheaper than spawning a reader per tick, and its MEM column is phys_footprint like Activity Monitor's.
 final class TopStream: @unchecked Sendable {
-    private struct Row {
+    struct Row: Equatable {
         let pid: pid_t
         let cpuPercent: Double
         let threads: Int
@@ -29,7 +29,7 @@ final class TopStream: @unchecked Sendable {
     private static let columnCount = 7
     private static let restartInterval: TimeInterval = 10
     private static let minimumBackoff: TimeInterval = 1
-    private static let staleIntervals = 3.0
+    private static let staleIntervals = 2.0
     private static let nanosPerSecond = 1_000_000_000.0
     private static let newline = UInt8(ascii: "\n")
     private static let blockHeader = "Processes:"
@@ -85,13 +85,11 @@ final class TopStream: @unchecked Sendable {
         }
     }
 
-    // After a pause, the last reading stays on screen until top's next sample arrives instead of flashing empty rows.
-    private static let maxStaleSeconds: Double = 300
-
     func usage() -> [pid_t: ReportedUsage] {
         lock.withLock {
             let age = Double(DispatchTime.now().uptimeNanoseconds &- publishedAt) / Self.nanosPerSecond
-            guard publishedAt > 0, age <= Self.maxStaleSeconds || (isRunning && age <= interval * Self.staleIntervals) else { return [:] }
+            // An old reading would look current in the table, history and alerts, so anything past its window is dropped.
+            guard publishedAt > 0, isRunning, age <= interval * Self.staleIntervals else { return [:] }
             return published
         }
     }
@@ -241,7 +239,7 @@ final class TopStream: @unchecked Sendable {
         )
     }
 
-    private static func parseRow(_ line: String) -> Row? {
+    static func parseRow(_ line: String) -> Row? {
         var fields = line.split(separator: " ", omittingEmptySubsequences: true)
         if let hours = fields.firstIndex(of: hoursSuffix), hours > 0 {
             fields[hours - 1] = Substring(fields[hours - 1] + ":00:00")

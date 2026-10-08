@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     // Sampling has to start even when no window opens at launch, because the menu bar label needs live numbers.
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
+        PauseLedger.resumeAll()
         MainActor.assumeIsolated {
             Self.store.start()
             Self.store.alerts.requestAuthorization()
@@ -83,11 +84,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let action = response.actionIdentifier
-        guard let groupID = response.notification.request.content.userInfo[AlertAction.groupKey] as? String else { return }
+        let groupID = response.notification.request.content.userInfo[AlertAction.groupKey] as? String
         await MainActor.run {
+            guard let groupID else {
+                NSApp.activate()
+                return
+            }
             switch action {
             case AlertAction.quit:
-                guard let group = Self.store.liveGroup(id: groupID) else { return }
+                guard let group = Self.store.liveGroup(id: groupID), group.isSafeQuitTarget else { return }
                 _ = ProcessActions.perform(.quit, on: group)
             case AlertAction.ignore:
                 AlertSettings.ignore(groupID)
@@ -99,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        PauseLedger.resumeAll()
         MainActor.assumeIsolated {
             Self.store.stop()
             Self.store.saveHistory()

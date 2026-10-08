@@ -4,7 +4,8 @@ import Foundation
 final class AppGrouper {
     private enum Target {
         case bundle(String)
-        case runtime(Runtime)
+        case project(String)
+        case runtime(Runtime, launcher: String?)
         case standalone(String)
     }
 
@@ -24,6 +25,11 @@ final class AppGrouper {
     private var bundleNames: [String: String] = [:]
     private var bundleKeys: [String: String] = [:]
     private var assignments: [String: Assignment] = [:]
+    private let projects: ProjectResolver
+
+    init(projects: ProjectResolver = ProjectResolver()) {
+        self.projects = projects
+    }
 
     func group(_ samples: [ProcessSample], regularAppPids: Set<pid_t>) -> [AppGroup] {
         let byPid = Dictionary(samples.map { ($0.pid, $0) }, uniquingKeysWith: { first, _ in first })
@@ -46,7 +52,8 @@ final class AppGrouper {
     private func assign(_ sample: ProcessSample, byPid: [pid_t: ProcessSample]) -> Assignment {
         if let runtime = Self.standaloneRuntime(sample) {
             let label = ScriptLabel.make(runtime: runtime, arguments: sample.arguments, workingDirectory: sample.workingDirectory)
-            return makeAssignment(.runtime(runtime), title: label.title, subtitle: label.location, path: sample.path)
+            let target: Target = projects.project(for: sample).map { .project($0) } ?? .runtime(runtime, launcher: launcherBundle(of: sample, byPid: byPid))
+            return makeAssignment(target, title: label.title, subtitle: label.location, path: sample.path)
         }
         let ownBundle = Self.outermostBundle(sample.path)
         if let parentBundle = responsibleBundle(for: sample, ownBundle: ownBundle, byPid: byPid) {
@@ -58,6 +65,12 @@ final class AppGrouper {
 
     private func makeAssignment(_ target: Target, title: String, subtitle: String? = nil, path: String) -> Assignment {
         Assignment(target: target, key: key(for: target), title: title, subtitle: subtitle, path: path)
+    }
+
+    // Without a project, the app that launched a runtime (Claude starting MCP servers, an editor starting a language server) is the best owner Herd can name.
+    private func launcherBundle(of sample: ProcessSample, byPid: [pid_t: ProcessSample]) -> String? {
+        guard sample.responsiblePid != sample.pid, let responsible = byPid[sample.responsiblePid] else { return nil }
+        return Self.outermostBundle(responsible.path)
     }
 
     // Interpreters bundled inside an app (ChatGPT's node, an Electron app's python) belong to that app, not the global runtime group.
@@ -93,21 +106,28 @@ final class AppGrouper {
             let isRegular = members.contains { regularAppPids.contains($0.sample.pid) }
             let kind: GroupKind = isRegular ? .apps : (isSystemPath(path) ? .system : .background)
             return AppGroup(id: key, name: displayName(forBundle: path), kind: kind, bundlePath: path, runtime: nil,
-                            mainPid: mainPid, processes: members, metrics: metrics)
-        case .runtime(let runtime):
-            return AppGroup(id: key, name: runtime.rawValue, kind: .background, bundlePath: nil, runtime: runtime,
-                            mainPid: nil, processes: members, metrics: metrics)
+                            mainPid: mainPid, processes: members, metrics: metrics, project: nil)
+        case .project(let root):
+            let runtimes = Self.runtimes(in: members)
+            let folder = (root as NSString).lastPathComponent
+            return AppGroup(id: key, name: "\(folder) (\(runtimes.map(\.rawValue).joined(separator: ", ")))", kind: .background,
+                            bundlePath: nil, runtime: runtimes.first, mainPid: nil, processes: members, metrics: metrics, project: root)
+        case .runtime(let runtime, let launcher):
+            let owner = launcher.map { "via \(displayName(forBundle: $0))" } ?? "no project"
+            return AppGroup(id: key, name: "\(runtime.rawValue) (\(owner))", kind: .background, bundlePath: nil, runtime: runtime,
+                            mainPid: nil, processes: members, metrics: metrics, project: nil)
         case .standalone(let name):
             let isSystem = members.allSatisfy { isSystemProcess($0.sample) }
             return AppGroup(id: key, name: name, kind: isSystem ? .system : .background, bundlePath: nil, runtime: nil,
-                            mainPid: members.map(\.sample.pid).min(), processes: members, metrics: metrics)
+                            mainPid: members.map(\.sample.pid).min(), processes: members, metrics: metrics, project: nil)
         }
     }
 
     private func key(for target: Target) -> String {
         switch target {
         case .bundle(let path): "bundle:\(bundleKey(path))"
-        case .runtime(let runtime): "runtime:\(runtime.rawValue)"
+        case .project(let root): "project:\(root)"
+        case .runtime(let runtime, let launcher): "runtime:\(runtime.rawValue)" + (launcher.map { "|\(bundleKey($0))" } ?? "")
         case .standalone(let name): "proc:\(name)"
         }
     }
@@ -118,6 +138,11 @@ final class AppGrouper {
         let key = Bundle(path: path)?.bundleIdentifier ?? path
         bundleKeys[path] = key
         return key
+    }
+
+    private static func runtimes(in members: [GroupedProcess]) -> [Runtime] {
+        let counts = Dictionary(members.compactMap { Runtime.detect(executableName: $0.sample.name) }.map { ($0, 1) }, uniquingKeysWith: +)
+        return counts.sorted { $0.value == $1.value ? $0.key.rawValue < $1.key.rawValue : $0.value > $1.value }.map(\.key)
     }
 
     private static func mainPid(bundle: String, members: [GroupedProcess], regularAppPids: Set<pid_t>) -> pid_t? {

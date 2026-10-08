@@ -111,7 +111,7 @@ struct ProcessTableView: View {
         .customizationID("pid")
         .defaultVisibility(.hidden)
 
-        TableColumn("Last 5 min") { row in
+        TableColumn("Trend") { row in
             TrendCell(row: row, history: history, column: trendColumn)
         }
         .width(min: 80, ideal: 110)
@@ -146,13 +146,12 @@ struct ProcessTableView: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.horizontal, 6)
-                    .help("macOS doesn't share this for system processes")
                     .accessibilityLabel("Not available")
             } else {
                 HeatValue(column: column, value: row[keyPath: value])
             }
         }
-        .width(min: 64, ideal: column == .network || column == .disk || column == .impact ? 104 : 76)
+        .width(min: 64, ideal: column == .network || column == .disk || column == .impact || column == .energy ? 104 : 76)
         .customizationID(column.rawValue)
         .defaultVisibility(column == .disk ? .hidden : .automatic)
     }
@@ -200,16 +199,18 @@ private struct NameCell: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(Theme.surfaceRaised, in: Capsule())
-                    .help("Listening on port " + String(port))
+                    .accessibilityLabel("Port " + String(port))
             }
             if !sleepReasons.isEmpty {
                 Image(systemName: "moon.zzz.fill")
                     .foregroundStyle(Theme.warning)
-                    .help("Keeping your Mac awake: \(sleepReasons.joined(separator: ", "))")
+                    .help(sleepReasons.joined(separator: ", "))
                     .accessibilityLabel("Keeping your Mac awake")
             }
             if row.isSuspended {
-                StatePill(text: "Paused", color: Theme.warning)
+                Image(systemName: "pause.circle.fill")
+                    .foregroundStyle(Theme.warning)
+                    .accessibilityLabel("Paused")
             }
             if row.role != .process && row.count > 1 {
                 Text("\(row.count)")
@@ -218,7 +219,6 @@ private struct NameCell: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(Theme.surfaceRaised, in: Capsule())
-                    .help("\(row.count) processes")
                     .accessibilityLabel("\(row.count) processes")
             }
         }

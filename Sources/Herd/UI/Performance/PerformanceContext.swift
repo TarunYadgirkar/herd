@@ -40,6 +40,6 @@ struct PerformanceContext {
 }
 
 enum PerformanceCopy {
-    static let collecting = "Collecting data. Graphs fill in as Herd runs."
-    static let unavailable = "Not available on this Mac"
+    static let collecting = "Collecting…"
+    static let unavailable = "Unavailable"
 }

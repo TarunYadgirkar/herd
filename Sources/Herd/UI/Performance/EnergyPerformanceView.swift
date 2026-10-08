@@ -11,7 +11,7 @@ struct EnergyPerformanceView: View {
             PerformanceHeader(
                 title: "Energy",
                 value: Format.watts(power.systemWatts ?? power.packageWatts),
-                caption: power.systemWatts == nil ? "used by the chip" : "used by the whole Mac",
+                caption: Text(power.systemWatts == nil ? "Chip" : "Whole Mac"),
                 stats: stats(power),
                 range: context.range
             )
@@ -19,12 +19,11 @@ struct EnergyPerformanceView: View {
                 title: "Power use",
                 series: powerSeries,
                 unit: .watts,
-                context: context,
-                help: "Power drawn by each part of the chip. The line shows the whole Mac when macOS reports it."
+                context: context
             )
             EnergyTodayCard(usage: usage)
         } else {
-            SectionMessage(title: "Energy", symbol: PerformanceSection.energy.symbol, message: PerformanceCopy.unavailable)
+            SectionMessage(title: PerformanceCopy.unavailable, symbol: PerformanceSection.energy.symbol)
         }
     }
 
@@ -45,15 +44,11 @@ struct EnergyPerformanceView: View {
             point.systemWatts ?? point.cpuWatts.map { $0 + (point.gpuWatts ?? 0) + (point.aneWatts ?? 0) }
         }
         return [
-            PerformanceStat(label: "CPU", value: Format.watts(power.cpuWatts), color: ChartPalette.cpuPower),
-            PerformanceStat(label: "GPU", value: Format.watts(power.gpuWatts), color: ChartPalette.gpuPower),
-            PerformanceStat(label: "Neural Engine", value: Format.watts(power.aneWatts), help: "Power used for on-device machine learning", color: ChartPalette.anePower),
-            PerformanceStat(label: "Memory", value: Format.watts(power.dramWatts), color: ChartPalette.dramPower),
-            PerformanceStat(
-                label: "Used",
-                value: PerformanceFormat.wattHours(used / Self.secondsPerHour),
-                help: "Energy used over the last \(context.historyRange.title)"
-            ),
+            PerformanceStat(label: "CPU", value: Format.watts(power.cpuWatts), swatch: ChartPalette.cpuPower),
+            PerformanceStat(label: "GPU", value: Format.watts(power.gpuWatts), swatch: ChartPalette.gpuPower),
+            PerformanceStat(label: "Neural Engine", value: Format.watts(power.aneWatts), swatch: ChartPalette.anePower),
+            PerformanceStat(label: "Memory", value: Format.watts(power.dramWatts), swatch: ChartPalette.dramPower),
+            PerformanceStat(label: "Used", value: PerformanceFormat.wattHours(used / Self.secondsPerHour)),
         ]
     }
 }
@@ -65,11 +60,9 @@ private struct EnergyTodayCard: View {
     private static let numberWidth: CGFloat = 84
 
     var body: some View {
-        PerformanceCard(title: "Energy by app today", help: "Energy each app has used since midnight.") {
-            Text("Since midnight").font(.captionText).foregroundStyle(.secondary)
-        } content: {
+        PerformanceCard(title: "Today by app") {
             if usage.isEmpty {
-                ChartMessage(text: "No app activity recorded yet today.", height: 80)
+                ChartMessage(text: PerformanceCopy.collecting, height: 80)
             } else {
                 table
             }
@@ -80,7 +73,7 @@ private struct EnergyTodayCard: View {
         Grid(alignment: .leading, horizontalSpacing: Theme.groupSpacing, verticalSpacing: Theme.itemSpacing) {
             GridRow {
                 Text("App")
-                numberHeader("Energy")
+                numberHeader("CPU Energy")
                 numberHeader("CPU time")
                 numberHeader("Network")
                 numberHeader("Disk")

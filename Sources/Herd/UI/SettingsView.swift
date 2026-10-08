@@ -17,36 +17,32 @@ struct SettingsView: View {
         @Bindable var store = store
         Form {
             Section("General") {
-                Picker("Update numbers", selection: $store.interval) {
+                Picker("Update every", selection: $store.interval) {
                     ForEach(UpdateInterval.allCases) { Text($0.title).tag($0) }
                 }
-                Toggle("Open details when you select an app", isOn: $autoOpenInspector)
-                Toggle("Show a live CPU graph in the Dock", isOn: $dockGraph)
+                Toggle("Open details on select", isOn: $autoOpenInspector)
+                Toggle("CPU graph in Dock", isOn: $dockGraph)
             }
             Section("Menu bar") {
-                Toggle("Show Herd in the menu bar", isOn: $showMenuBarExtra)
-                Picker("Menu bar shows", selection: $menuBarLabelStyle) {
+                Toggle("Show in menu bar", isOn: $showMenuBarExtra)
+                Picker("Display", selection: $menuBarLabelStyle) {
                     ForEach(MenuBarLabelStyle.allCases) { Text($0.title).tag($0) }
                 }
                 .disabled(!showMenuBarExtra)
             }
-            Section {
-                Toggle("Notify me about runaway apps", isOn: $alertsEnabled)
-                Picker("When an app uses more than", selection: $cpuThreshold) {
-                    ForEach(Self.thresholds, id: \.self) { Text("\(Int($0))% CPU").tag($0) }
+            Section("Alerts") {
+                Toggle("Runaway app alerts", isOn: $alertsEnabled)
+                Picker("CPU above", selection: $cpuThreshold) {
+                    ForEach(Self.thresholds, id: \.self) { Text("\(Int($0))%").tag($0) }
+                }
+                .help("100% = one core")
+                .disabled(!alertsEnabled)
+                Picker("For", selection: $cpuMinutes) {
+                    ForEach(Self.durations, id: \.self) { Text("\(Int($0)) min").tag($0) }
                 }
                 .disabled(!alertsEnabled)
-                Picker("For at least", selection: $cpuMinutes) {
-                    ForEach(Self.durations, id: \.self) { Text($0 == 1 ? "1 minute" : "\(Int($0)) minutes").tag($0) }
-                }
-                .disabled(!alertsEnabled)
-                Button("Alert Me About Every App Again") { UserDefaults.standard.removeObject(forKey: AlertSettings.ignoredKey) }
+                Button("Reset Ignored Apps") { UserDefaults.standard.removeObject(forKey: AlertSettings.ignoredKey) }
                     .disabled(AlertSettings.ignoredGroups.isEmpty)
-            } header: {
-                Text("Alerts")
-            } footer: {
-                Text("Herd also tells you when memory runs out, when an app's memory grows by more than 3 GB in a few minutes, and when your Mac stays very hot. 100% CPU is one full core.")
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

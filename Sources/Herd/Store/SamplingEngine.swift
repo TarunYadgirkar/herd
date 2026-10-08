@@ -3,6 +3,7 @@ import Foundation
 
 struct Frame: Sendable {
     let date: Date
+    let elapsed: TimeInterval?
     let system: SystemSnapshot
     let groups: [AppGroup]
     let processCount: Int
@@ -17,6 +18,7 @@ actor SamplingEngine {
     private let batterySampler = BatterySampler()
     private let powerSampler = PowerSampler()
     private let grouper = AppGrouper()
+    private var lastTickUptime: UInt64?
 
     func start() {
         networkSampler.start()
@@ -54,6 +56,14 @@ actor SamplingEngine {
             return enriched
         }
         let groups = grouper.group(samples, regularAppPids: regularAppPids)
-        return Frame(date: Date(), system: system, groups: groups, processCount: samples.count)
+        return Frame(date: Date(), elapsed: elapsedSinceLastTick(), system: system, groups: groups, processCount: samples.count)
+    }
+
+    // Uptime pauses during sleep, the same clock the per-process counters use, so totals stay consistent across sleep.
+    private func elapsedSinceLastTick() -> TimeInterval? {
+        let now = DispatchTime.now().uptimeNanoseconds
+        defer { lastTickUptime = now }
+        guard let lastTickUptime, now > lastTickUptime else { return nil }
+        return Double(now - lastTickUptime) / 1_000_000_000
     }
 }

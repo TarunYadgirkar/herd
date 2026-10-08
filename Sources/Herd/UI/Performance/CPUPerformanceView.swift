@@ -21,29 +21,19 @@ struct CPUPerformanceView: View {
             ]),
             unit: .fraction,
             context: context,
-            yDomain: 0...1,
-            help: "User is work done by apps. System is work done by macOS on their behalf."
+            yDomain: 0...1
         )
-        CoreGrid(usage: system.perCoreUsage, history: cores, readings: system.power?.clusters)
+        CoreGrid(usage: system.perCoreUsage, history: cores, readings: system.power?.clusters, temperatures: system.sensors?.temperatures ?? [])
     }
 
     private var stats: [PerformanceStat] {
         var stats = [
-            PerformanceStat(label: "User", value: Format.percent(system.cpuUser * 100), help: "Work done by apps", color: ChartPalette.cpuUser),
-            PerformanceStat(label: "System", value: Format.percent(system.cpuSystem * 100), help: "Work done by macOS on their behalf", color: ChartPalette.cpuSystem),
-            PerformanceStat(label: "Cores", value: "\(system.perCoreUsage.count)"),
-            PerformanceStat(
-                label: "Load average",
-                value: PerformanceFormat.load(system.loadAverage),
-                help: "Average number of tasks waiting to run over the last 1, 5 and 15 minutes."
-            ),
+            PerformanceStat(label: "User", value: Format.percent(system.cpuUser * 100), swatch: ChartPalette.cpuUser),
+            PerformanceStat(label: "System", value: Format.percent(system.cpuSystem * 100), swatch: ChartPalette.cpuSystem),
+            PerformanceStat(label: "Load", value: PerformanceFormat.load(system.loadAverage), help: "1, 5, 15 min"),
         ]
         if let kernel = system.kernelCPUPercent {
-            stats.append(PerformanceStat(
-                label: "kernel_task",
-                value: Format.percent(kernel),
-                help: "macOS raises kernel_task to keep the CPU cool when your Mac is hot."
-            ))
+            stats.append(PerformanceStat(label: "kernel_task", value: Format.percent(kernel)))
         }
         stats.append(PerformanceStat(label: "Uptime", value: Format.duration(system.uptime)))
         return stats

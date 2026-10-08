@@ -79,13 +79,13 @@ private struct Sidebar: View {
         List(selection: $selection) {
             Label("Processes", systemImage: "list.bullet.rectangle")
                 .tag(SidebarItem.processes)
-            Section("Performance") {
+            Section {
                 ForEach(PerformanceSection.allCases) { section in
                     SidebarRow(title: section.title, symbol: section.symbol, value: section.summary(store.system))
                         .tag(SidebarItem.performance(section))
                 }
             }
-            Section("History") {
+            Section {
                 Label("App History", systemImage: "clock.arrow.circlepath")
                     .tag(SidebarItem.history)
             }

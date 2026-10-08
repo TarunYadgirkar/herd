@@ -50,6 +50,7 @@ final class AlertMonitor {
     private var lastAlert: [String: Date] = [:]
     private var criticalSince: Date?
     private var hotSince: Date?
+    private var lastFrameDate: Date?
     private var isAuthorized = false
 
     func requestAuthorization() {
@@ -62,7 +63,8 @@ final class AlertMonitor {
         }
     }
 
-    func evaluate(_ frame: Frame) {
+    func evaluate(_ frame: Frame, maxGap: TimeInterval) {
+        resetIfGap(before: frame.date, maxGap: maxGap)
         guard AlertSettings.isEnabled, isAuthorized else { return }
         let candidates = frame.groups.filter { $0.kind != .system && !$0.pids.contains(getpid()) }
         let ignored = AlertSettings.ignoredGroups
@@ -70,6 +72,16 @@ final class AlertMonitor {
         checkMemoryGrowth(candidates.filter { !ignored.contains($0.id) }, at: frame.date)
         checkPressure(frame, at: frame.date)
         checkHeat(frame.system, at: frame.date)
+    }
+
+    // Two high readings with a pause or sleep between them say nothing about the time in between, so streaks restart.
+    private func resetIfGap(before date: Date, maxGap: TimeInterval) {
+        defer { lastFrameDate = date }
+        guard let lastFrameDate, date.timeIntervalSince(lastFrameDate) > maxGap else { return }
+        cpuStreaks = [:]
+        memoryBaselines = [:]
+        criticalSince = nil
+        hotSince = nil
     }
 
     private func checkRunawayCPU(_ groups: [AppGroup], at now: Date) {
@@ -117,9 +129,9 @@ final class AlertMonitor {
         criticalSince = since
         guard now.timeIntervalSince(since) >= Self.pressureHold, let top = frame.groups.max(by: { $0.metrics.memory < $1.metrics.memory }) else { return }
         notify(
-            key: "pressure", group: top, at: now,
+            key: "pressure", group: nil, at: now,
             title: "Your Mac is running out of memory",
-            body: "\(top.name) is using the most, \(Format.bytes(top.metrics.memory)). Quitting it will free memory fastest."
+            body: "\(top.name) uses the most, \(Format.bytes(top.metrics.memory)). Closing apps you aren't using frees memory, though not all of an app's footprint comes back."
         )
     }
 
@@ -145,7 +157,7 @@ final class AlertMonitor {
         content.title = title
         content.body = body
         content.sound = .default
-        if let group, ProcessActions.canAct(on: group) {
+        if let group, ProcessActions.canAct(on: group), group.isSafeQuitTarget {
             content.categoryIdentifier = AlertAction.category
             content.userInfo = [AlertAction.groupKey: group.id]
         }

@@ -78,6 +78,14 @@ private struct InspectorSection<Content: View>: View {
     }
 }
 
+private struct PausedGlyph: View {
+    var body: some View {
+        Image(systemName: "pause.circle.fill")
+            .foregroundStyle(Theme.warning)
+            .accessibilityLabel("Paused")
+    }
+}
+
 private struct InspectorHeader: View {
     let group: AppGroup
 
@@ -91,12 +99,15 @@ private struct InspectorHeader: View {
                         .lineLimit(2)
                         .textSelection(.enabled)
                     HStack(spacing: 6) {
-                        Label(summary, systemImage: kindSymbol)
-                            .font(.subheadText.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .help(kindTitle)
-                        if group.isSuspended { StatePill(text: "Paused", color: Theme.warning) }
+                        Image(systemName: kindSymbol)
+                        Label("\(group.processes.count)", systemImage: "square.stack")
+                            .labelStyle(.titleAndIcon)
+                        if group.isSuspended { PausedGlyph() }
                     }
+                    .font(.subheadText.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(summary)
                 }
             }
             if let path { PathRow(group: group, path: path) }
@@ -105,12 +116,13 @@ private struct InspectorHeader: View {
 
     private var summary: String {
         let count = group.processes.count
-        return "\(count) \(count == 1 ? "process" : "processes")"
+        let paused = group.isSuspended ? ", paused" : ""
+        return "\(kindTitle), \(count) \(count == 1 ? "process" : "processes")\(paused)"
     }
 
     private var kindSymbol: String {
         switch group.kind {
-        case .apps: "macwindow"
+        case .apps: "app"
         case .background: "gearshape.2"
         case .system: "apple.logo"
         }
@@ -147,7 +159,6 @@ private struct PathRow: View {
             Button("Show in Finder", systemImage: "folder") { ProcessActions.revealInFinder(group) }
                 .buttonStyle(.borderless)
                 .controlSize(.small)
-                .help("Reveal this app's file in Finder")
         }
     }
 }
@@ -156,12 +167,11 @@ private struct ExplanationSection: View {
     let text: String
 
     var body: some View {
-        InspectorSection(title: "What is this?") {
-            Text(text)
-                .font(.calloutText)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-        }
+        Text(text)
+            .font(.calloutText)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
     }
 }
 
@@ -171,7 +181,11 @@ private struct LiveNumbersSection: View {
     private static let rows: [[MetricColumn]] = [[.cpu, .memory], [.energy, .gpu], [.network, .disk]]
 
     var body: some View {
-        InspectorSection(title: "Right now", detail: "\(group.metrics.threads) threads") {
+        VStack(alignment: .trailing, spacing: 4) {
+            Label("\(group.metrics.threads)", systemImage: "line.3.horizontal")
+                .font(.metricSmall)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("\(group.metrics.threads) threads")
             Grid(horizontalSpacing: Theme.itemSpacing, verticalSpacing: Theme.itemSpacing) {
                 ForEach(Self.rows, id: \.self) { row in
                     GridRow {
@@ -196,7 +210,7 @@ private struct MetricTile: View {
 
     var body: some View {
         let heat = column.heat(value)
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Label(column.title, systemImage: column.symbol)
                 .font(.captionText)
                 .foregroundStyle(.secondary)
@@ -219,12 +233,10 @@ private struct HistorySection: View {
     let interval: Double
 
     var body: some View {
-        InspectorSection(title: "Last 5 minutes") {
-            VStack(alignment: .leading, spacing: Theme.groupSpacing) {
-                HistoryChart(title: "CPU", values: history.cpu.values, interval: interval, minimumCeiling: 10, format: Format.percent)
-                HistoryChart(title: "Memory", values: history.memory.values, interval: interval, minimumCeiling: 64_000_000) {
-                    Format.bytes(UInt64(max($0, 0)))
-                }
+        VStack(alignment: .leading, spacing: Theme.groupSpacing) {
+            HistoryChart(title: "CPU", values: history.cpu.values, interval: interval, minimumCeiling: 10, format: Format.percent)
+            HistoryChart(title: "Memory", values: history.memory.values, interval: interval, minimumCeiling: 64_000_000) {
+                Format.bytes(UInt64(max($0, 0)))
             }
         }
     }
@@ -255,7 +267,10 @@ private struct HistoryChart: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).font(.calloutText.weight(.medium))
                 Spacer()
-                Text("Peak \(format(peak))").font(.metricSmall).foregroundStyle(.secondary)
+                Label(format(peak), systemImage: "arrow.up.to.line")
+                    .font(.metricSmall)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Peak \(format(peak))")
             }
             if points.count > 1 {
                 chart(points, ceiling: max(peak * 1.15, minimumCeiling))
@@ -304,9 +319,9 @@ private struct HistoryChart: View {
     }
 
     private var placeholder: some View {
-        Text("Collecting samples")
-            .font(.captionText)
-            .foregroundStyle(.tertiary)
+        ProgressView()
+            .controlSize(.small)
+            .accessibilityLabel("Collecting samples")
             .frame(maxWidth: .infinity, minHeight: Self.height)
             .surface()
     }
@@ -329,32 +344,36 @@ private struct ActionsRow: View {
     var body: some View {
         let canAct = ProcessActions.canAct(on: group, action: .quit)
         HStack(spacing: Theme.itemSpacing) {
-            button(.quit, help: "Ask \(group.name) to quit normally")
+            button(.quit)
                 .buttonStyle(.bordered)
-            button(.forceQuit, help: "Stop \(group.name) right away. Unsaved work is lost.")
+            button(.forceQuit)
                 .buttonStyle(.bordered)
                 .tint(Theme.critical)
             pauseButton
+            if !canAct {
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(.secondary)
+                    .help("Protected by macOS")
+                    .accessibilityLabel("Protected by macOS")
+            }
         }
         .disabled(!canAct)
-        .help(canAct ? "" : "\(group.name) is part of macOS, so Herd won't stop it")
     }
 
     @ViewBuilder
     private var pauseButton: some View {
         if group.isSuspended {
-            button(.resume, help: "Let \(group.name) run again")
+            button(.resume)
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.accent)
         } else {
-            button(.suspend, help: "Freeze \(group.name) so it stops using CPU")
+            button(.suspend)
                 .buttonStyle(.bordered)
         }
     }
 
-    private func button(_ action: ProcessAction, help: String) -> some View {
+    private func button(_ action: ProcessAction) -> some View {
         Button(action.title, systemImage: action.symbol) { actions.request(action, on: group) }
-            .help(help)
     }
 }
 
@@ -422,9 +441,10 @@ private struct ProcessRow: View {
                 Text("≈")
                     .font(.calloutText)
                     .foregroundStyle(.secondary)
-                    .help("Read from ps because macOS hides this process's details from regular apps")
+                    .help("Estimated via ps")
+                    .accessibilityLabel("Estimated")
             }
-            if sample.isSuspended { StatePill(text: "Paused", color: Theme.warning) }
+            if sample.isSuspended { PausedGlyph() }
             Spacer(minLength: Theme.itemSpacing)
             Text(Format.percent(sample.cpuPercent))
                 .frame(width: Self.cpuWidth, alignment: .trailing)
@@ -463,13 +483,9 @@ private struct ProcessContextMenu: View {
 
     var body: some View {
         Group {
-            item(.quit, title: "Quit Process")
-            item(.forceQuit, title: "Force Quit Process")
-            if sample.isSuspended {
-                item(.resume, title: "Resume Process")
-            } else {
-                item(.suspend, title: "Pause Process")
-            }
+            item(.quit)
+            item(.forceQuit)
+            item(sample.isSuspended ? .resume : .suspend)
         }
         Divider()
         Button("Get Info", systemImage: "info.circle") { openWindow(id: "process-info", value: sample.id) }
@@ -477,8 +493,8 @@ private struct ProcessContextMenu: View {
         Button("Copy Command Line", systemImage: "terminal") { copy(sample.commandLine) }
     }
 
-    private func item(_ action: ProcessAction, title: String) -> some View {
-        Button(title, systemImage: action.symbol) { actions.request(action, on: sample, groupName: groupName) }
+    private func item(_ action: ProcessAction) -> some View {
+        Button(action.title, systemImage: action.symbol) { actions.request(action, on: sample, groupName: groupName) }
             .disabled(ProcessActions.isProtected(sample, for: action))
     }
 
@@ -496,7 +512,7 @@ private struct InspectorEmptyState: View {
             Image(systemName: hasQuit ? "xmark.app" : "sidebar.right")
                 .font(.system(size: 30, weight: .light))
                 .foregroundStyle(.tertiary)
-            Text(hasQuit ? "This app has quit." : "Select an app to see its history and processes.")
+            Text(hasQuit ? "App quit" : "No selection")
                 .font(.calloutText)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

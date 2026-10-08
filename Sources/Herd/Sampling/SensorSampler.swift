@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 private enum SensorRole {
-    case cpu, gpu, ssd, battery, other
+    case cpu, gpu, ssd, battery, lid, palmRest, other
 }
 
 private struct RoleTemperature {
@@ -20,6 +20,7 @@ private struct TemperatureChannel {
     let id: String
     let name: String
     let role: SensorRole
+    let zone: SensorZone
 }
 
 private struct FanChannel {
@@ -41,15 +42,23 @@ private enum SensorCatalog {
     static let temperaturePrefix = UInt32(UInt8(ascii: "T"))
     static let floatType = SMCKey("flt ")
 
+    // Key meanings follow exelban/stats and dkorunic/iSMC, which agree on the M5 core and GPU tables.
     static let m5SuperCores = ["Tp00", "Tp04", "Tp08", "Tp0C", "Tp0G", "Tp0K"]
     static let m5PerformanceCores = ["Tp0O", "Tp0R", "Tp0U", "Tp0X", "Tp0a", "Tp0d", "Tp0g", "Tp0j", "Tp0m", "Tp0p", "Tp0u", "Tp0y"]
     static let m5GPUClusters = ["Tg0U", "Tg0X", "Tg0d", "Tg0g", "Tg0j", "Tg1Y", "Tg1c", "Tg1g"]
+    static let memoryPrefix = "Tm"
+    // iSMC: these two mirror a Performance core instead of measuring memory.
+    static let memoryMirrors: Set<String> = ["Tm0y", "Tm2T"]
     static let cpuFallbackPrefix = "Tp"
     static let gpuFallbackPrefix = "Tg"
 
-    static let ssdPriority = ["TH0x", "TH0a", "TH0b"]
+    static let ssdKeys = ["TH0x", "TH0a", "TH0b"]
     static let batteryPriority = ["TB0T", "TB1T", "TB2T"]
-    static let ambient = [("TaLP", "Airflow left"), ("TaRF", "Airflow right"), ("TW0P", "Wi-Fi")]
+    static let lid = "TAOL"
+    static let palmRest = ["Ts0P", "Ts1P"]
+    static let body: [(key: String, name: String)] = [
+        ("TaLP", "Airflow left"), ("TaRF", "Airflow right"), ("TCHP", "Charger"), ("TW0P", "Wi-Fi"),
+    ]
 
     static let fanCount = SMCKey("FNum")
     static let systemPower = SMCKey("PSTR")
@@ -88,7 +97,7 @@ private final class SMCSensorSource {
         refreshDueTemperatures()
         let temperatures = zip(plan.temperatures, celsius).compactMap { channel, celsius in
             celsius.map {
-                RoleTemperature(role: channel.role, reading: TemperatureReading(key: channel.id, name: channel.name, celsius: $0))
+                RoleTemperature(role: channel.role, reading: TemperatureReading(key: channel.id, name: channel.name, zone: channel.zone, celsius: $0))
             }
         }
         return SMCSample(
@@ -163,6 +172,8 @@ final class SensorSampler {
             gpuCelsius: summary?.gpuCelsius,
             ssdCelsius: summary?.ssdCelsius,
             batteryCelsius: summary?.batteryCelsius,
+            lidCelsius: summary?.lidCelsius,
+            palmRestCelsius: summary?.palmRestCelsius,
             systemWatts: sample.systemWatts,
             adapterInWatts: sample.adapterInWatts,
             fans: sample.fans,
@@ -179,6 +190,8 @@ final class SensorSampler {
             gpuCelsius: mean(celsius(of: .gpu, in: temperatures)),
             ssdCelsius: celsius(of: .ssd, in: temperatures).max(),
             batteryCelsius: celsius(of: .battery, in: temperatures).max(),
+            lidCelsius: celsius(of: .lid, in: temperatures).max(),
+            palmRestCelsius: celsius(of: .palmRest, in: temperatures).max(),
             temperatures: temperatures.map(\.reading)
         )
     }
@@ -219,44 +232,54 @@ extension SensorSampler {
 
     private static func temperatureChannels(from discovered: [SMCChannel]) -> [TemperatureChannel] {
         let byName = Dictionary(discovered.map { ($0.key.name, $0) }, uniquingKeysWith: { first, _ in first })
-        let named = { (name: String, label: String, role: SensorRole) -> TemperatureChannel? in
-            byName[name].map { TemperatureChannel(channel: $0, id: name, name: label, role: role) }
+        let named = { (key: String, label: String, role: SensorRole, zone: SensorZone) -> TemperatureChannel? in
+            byName[key].map { TemperatureChannel(channel: $0, id: key, name: label, role: role, zone: zone) }
         }
-        let firstOf = { (names: [String], label: String, role: SensorRole) -> [TemperatureChannel] in
-            names.lazy.compactMap { named($0, label, role) }.first.map { [$0] } ?? []
-        }
+        let battery = SensorCatalog.batteryPriority.lazy.compactMap { named($0, "Battery", .battery, .inside) }.first
         return cpuChannels(discovered, named: named)
             + gpuChannels(discovered, named: named)
-            + firstOf(SensorCatalog.ssdPriority, "SSD", .ssd)
-            + firstOf(SensorCatalog.batteryPriority, "Battery", .battery)
-            + SensorCatalog.ambient.compactMap { named($0.0, $0.1, .other) }
+            + memoryChannels(discovered)
+            + numbered(SensorCatalog.ssdKeys, "SSD").compactMap { named($0.key, $0.label, .ssd, .storage) }
+            + [named(SensorCatalog.lid, "Lid", .lid, .surface)].compactMap { $0 }
+            + numbered(SensorCatalog.palmRest, "Palm rest").compactMap { named($0.key, $0.label, .palmRest, .surface) }
+            + [battery].compactMap { $0 }
+            + SensorCatalog.body.compactMap { named($0.key, $0.name, .other, .inside) }
     }
 
     private static func cpuChannels(
         _ discovered: [SMCChannel],
-        named: (String, String, SensorRole) -> TemperatureChannel?
+        named: (String, String, SensorRole, SensorZone) -> TemperatureChannel?
     ) -> [TemperatureChannel] {
-        let known = isM5 ? numbered(SensorCatalog.m5SuperCores, "Super core") + numbered(SensorCatalog.m5PerformanceCores, "Performance core") : []
-        let channels = known.compactMap { named($0.key, $0.label, .cpu) }
-        return channels.isEmpty ? rawChannels(discovered, prefix: SensorCatalog.cpuFallbackPrefix, role: .cpu) : channels
+        guard isM5 else { return rawChannels(discovered, prefix: SensorCatalog.cpuFallbackPrefix, role: .cpu, zone: .cpu) }
+        let superCores = numbered(SensorCatalog.m5SuperCores, "Super").compactMap { named($0.key, $0.label, .cpu, .superCores) }
+        let performance = numbered(SensorCatalog.m5PerformanceCores, "Performance").compactMap { named($0.key, $0.label, .cpu, .performanceCores) }
+        let channels = superCores + performance
+        return channels.isEmpty ? rawChannels(discovered, prefix: SensorCatalog.cpuFallbackPrefix, role: .cpu, zone: .cpu) : channels
     }
 
     private static func gpuChannels(
         _ discovered: [SMCChannel],
-        named: (String, String, SensorRole) -> TemperatureChannel?
+        named: (String, String, SensorRole, SensorZone) -> TemperatureChannel?
     ) -> [TemperatureChannel] {
-        let known = isM5 ? numbered(SensorCatalog.m5GPUClusters, "GPU cluster") : []
-        let channels = known.compactMap { named($0.key, $0.label, .gpu) }
-        return channels.isEmpty ? rawChannels(discovered, prefix: SensorCatalog.gpuFallbackPrefix, role: .gpu) : channels
+        let known = isM5 ? numbered(SensorCatalog.m5GPUClusters, "GPU") : []
+        let channels = known.compactMap { named($0.key, $0.label, .gpu, .gpu) }
+        return channels.isEmpty ? rawChannels(discovered, prefix: SensorCatalog.gpuFallbackPrefix, role: .gpu, zone: .gpu) : channels
+    }
+
+    private static func memoryChannels(_ discovered: [SMCChannel]) -> [TemperatureChannel] {
+        discovered
+            .filter { $0.key.name.hasPrefix(SensorCatalog.memoryPrefix) && !SensorCatalog.memoryMirrors.contains($0.key.name) }
+            .enumerated()
+            .map { TemperatureChannel(channel: $0.element, id: $0.element.key.name, name: "Memory \($0.offset + 1)", role: .other, zone: .memory) }
     }
 
     private static func numbered(_ keys: [String], _ label: String) -> [(key: String, label: String)] {
         keys.enumerated().map { ($0.element, "\(label) \($0.offset + 1)") }
     }
 
-    private static func rawChannels(_ discovered: [SMCChannel], prefix: String, role: SensorRole) -> [TemperatureChannel] {
+    private static func rawChannels(_ discovered: [SMCChannel], prefix: String, role: SensorRole, zone: SensorZone) -> [TemperatureChannel] {
         discovered.filter { $0.key.name.hasPrefix(prefix) }.map {
-            TemperatureChannel(channel: $0, id: $0.key.name, name: $0.key.name, role: role)
+            TemperatureChannel(channel: $0, id: $0.key.name, name: $0.key.name, role: role, zone: zone)
         }
     }
 
@@ -302,6 +325,7 @@ final class HIDThermalSource {
     private struct Service {
         let handle: UnsafeRawPointer
         let role: SensorRole
+        let zone: SensorZone
         let id: String
         let name: String
     }
@@ -311,8 +335,8 @@ final class HIDThermalSource {
     private static let temperatureUsage = 5
     private static let temperatureEventType: Int64 = 15
     private static let temperatureField = Int32(15 << 16)
-    private static let roles: [(prefix: String, role: SensorRole, label: String?)] = [
-        ("PMU tdie", .cpu, nil), ("gas gauge battery", .battery, "Battery"), ("NAND CH", .ssd, "SSD"),
+    private static let roles: [(prefix: String, role: SensorRole, zone: SensorZone, label: String?)] = [
+        ("PMU tdie", .cpu, .cpu, nil), ("gas gauge battery", .battery, .inside, "Battery"), ("NAND CH", .ssd, .storage, "SSD"),
     ]
 
     private let client: Unmanaged<AnyObject>
@@ -353,7 +377,7 @@ final class HIDThermalSource {
     fileprivate func sample() -> [RoleTemperature] {
         services.compactMap { service in
             guard let celsius = temperature(of: service.handle), SensorCatalog.plausibleCelsius.contains(celsius) else { return nil }
-            return RoleTemperature(role: service.role, reading: TemperatureReading(key: service.id, name: service.name, celsius: celsius))
+            return RoleTemperature(role: service.role, reading: TemperatureReading(key: service.id, name: service.name, zone: service.zone, celsius: celsius))
         }
     }
 
@@ -375,7 +399,7 @@ final class HIDThermalSource {
                   let name = Unmanaged<AnyObject>.fromOpaque(property).takeRetainedValue() as? String,
                   let match = roles.first(where: { name.hasPrefix($0.prefix) }),
                   seen.insert(name).inserted else { return nil }
-            return Service(handle: handle, role: match.role, id: name, name: match.label ?? name)
+            return Service(handle: handle, role: match.role, zone: match.zone, id: name, name: match.label ?? name)
         }
         .sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
     }

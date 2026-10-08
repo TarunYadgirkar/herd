@@ -34,9 +34,16 @@ struct FanReading: Sendable, Equatable, Identifiable {
     var name: String { "Fan \(index + 1)" }
 }
 
+enum SensorZone: Int, Sendable, CaseIterable, Comparable {
+    case superCores, performanceCores, cpu, gpu, memory, storage, surface, inside
+
+    static func < (lhs: SensorZone, rhs: SensorZone) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
 struct TemperatureReading: Sendable, Equatable, Identifiable {
     let key: String
     let name: String
+    let zone: SensorZone
     var celsius: Double
 
     var id: String { key }
@@ -48,6 +55,8 @@ struct SensorReading: Sendable, Equatable {
     var gpuCelsius: Double?
     var ssdCelsius: Double?
     var batteryCelsius: Double?
+    var lidCelsius: Double?
+    var palmRestCelsius: Double?
     var systemWatts: Double?
     var adapterInWatts: Double?
     var fans: [FanReading] = []

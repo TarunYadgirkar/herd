@@ -10,7 +10,7 @@ enum MetricColumn: String, CaseIterable, Identifiable, Sendable {
         case .cpu: "CPU"
         case .memory: "Memory"
         case .impact: "Energy Impact"
-        case .energy: "Power"
+        case .energy: "CPU Power"
         case .gpu: "GPU"
         case .network: "Network"
         case .disk: "Disk"

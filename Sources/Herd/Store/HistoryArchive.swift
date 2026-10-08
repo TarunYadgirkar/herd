@@ -37,7 +37,9 @@ final class HistoryArchive {
 
     private var fileURL: URL { directory.appending(path: Self.fileName, directoryHint: .notDirectory) }
 
-    func record(_ system: SystemSnapshot, groups: [AppGroup], interval: TimeInterval, at date: Date) {
+    // `elapsed` is the awake time the frame's counters actually cover; `rateWindow` caps it for network and disk,
+    // whose rates come from short windows and would overcount if stretched across a gap.
+    func record(_ system: SystemSnapshot, groups: [AppGroup], elapsed: TimeInterval, rateWindow: TimeInterval, at date: Date) {
         if let latest = latestRecordedDate, date < latest { rewind(to: date) }
         let point = SystemPoint(system, at: date)
         raw.add(point)
@@ -45,7 +47,7 @@ final class HistoryArchive {
         hour.add(point)
         cores.append(CorePoint(system, at: date))
         cores.drop(before: date.addingTimeInterval(-Self.rawRetention))
-        recordUsage(groups, interval: interval, at: date)
+        recordUsage(groups, span: UsageSpan(elapsed: elapsed, rateWindow: rateWindow), at: date)
         revision += 1
     }
 
@@ -119,13 +121,13 @@ final class HistoryArchive {
 }
 
 extension HistoryArchive {
-    private func recordUsage(_ groups: [AppGroup], interval: TimeInterval, at date: Date) {
+    private func recordUsage(_ groups: [AppGroup], span: UsageSpan, at date: Date) {
         if !ledgerDay.contains(date) {
             ledger = [:]
             ledgerDay = LedgerDay(containing: date)
         }
         for group in groups {
-            ledger[group.id, default: AppUsage(group, at: date)].accumulate(group, interval: interval, at: date)
+            ledger[group.id, default: AppUsage(group, at: date)].accumulate(group, span: span, at: date)
         }
         guard ledger.count > Self.ledgerCapacity + Self.ledgerTrimSlack else { return }
         let kept = ledger.values.sorted { $0.energyWattHours > $1.energyWattHours }.prefix(Self.ledgerCapacity)
@@ -208,6 +210,11 @@ private struct LedgerDay {
     }
 }
 
+struct UsageSpan {
+    let elapsed: TimeInterval
+    let rateWindow: TimeInterval
+}
+
 private extension AppUsage {
     init(_ group: AppGroup, at date: Date) {
         self.init(
@@ -216,17 +223,17 @@ private extension AppUsage {
         )
     }
 
-    // Impact is weighted by the interval like every other total, so a day's sum doesn't depend on the update rate.
-    mutating func accumulate(_ group: AppGroup, interval: TimeInterval, at date: Date) {
+    // CPU, energy and impact are averages over the whole elapsed span, so multiplying by it gives exact totals.
+    mutating func accumulate(_ group: AppGroup, span: UsageSpan, at date: Date) {
         let metrics = group.metrics
         let impact = group.processes.reduce(0) { $0 + $1.sample.energyImpact }
         name = group.name
         bundlePath = group.bundlePath
-        cpuSeconds += metrics.cpu / 100 * interval
-        energyWattHours += metrics.energy * interval / 3_600
-        energyImpactSum += impact * interval
-        networkBytes += metrics.network * interval
-        diskBytes += metrics.disk * interval
+        cpuSeconds += metrics.cpu / 100 * span.elapsed
+        energyWattHours += metrics.energy * span.elapsed / 3_600
+        energyImpactSum += impact * span.elapsed
+        networkBytes += metrics.network * span.rateWindow
+        diskBytes += metrics.disk * span.rateWindow
         peakMemory = max(peakMemory, Double(metrics.memory))
         lastSeen = date
     }

@@ -24,18 +24,6 @@ private enum MenuBarFormat {
         let gb = Double(bytes) / 1_073_741_824
         return String(format: gb < 100 ? "%.1f GB" : "%.0f GB", gb)
     }
-
-    static func wholeGigabytes(_ bytes: UInt64) -> String {
-        String(format: "%.0f GB", Double(bytes) / 1_073_741_824)
-    }
-
-    static func pressure(_ pressure: MemoryPressure) -> String {
-        switch pressure {
-        case .normal: "Normal"
-        case .warning: "Under pressure"
-        case .critical: "Critical"
-        }
-    }
 }
 
 struct MenuBarLabel: View {
@@ -245,25 +233,17 @@ private struct SystemStats: View {
             .frame(width: 72)
             StatColumn(title: "Memory") { memoryContent }
                 .frame(maxWidth: .infinity, alignment: .leading)
-            StatColumn(title: "Network") { networkContent }
+            StatColumn(title: nil) { networkContent }
                 .fixedSize()
         }
     }
 
     @ViewBuilder
     private var memoryContent: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 3) {
-            Text(MenuBarFormat.gigabytes(store.system.memoryUsed)).font(.displaySmall)
-            Text("of \(MenuBarFormat.wholeGigabytes(store.system.memoryTotal))")
-                .font(.captionText.monospacedDigit())
-                .foregroundStyle(.secondary)
-        }
-        .lineLimit(1)
-        StatePill(
-            text: MenuBarFormat.pressure(store.system.pressure),
-            color: Theme.pressureColor(store.system.pressure)
-        )
-        .accessibilityLabel("Memory pressure: \(MenuBarFormat.pressure(store.system.pressure))")
+        Text(MenuBarFormat.gigabytes(store.system.memoryUsed))
+            .font(.displaySmall)
+            .lineLimit(1)
+        PressureGauge(used: store.system.memoryUsed, total: store.system.memoryTotal, pressure: store.system.pressure)
     }
 
     @ViewBuilder
@@ -274,14 +254,16 @@ private struct SystemStats: View {
 }
 
 private struct StatColumn<Content: View>: View {
-    let title: String
+    let title: String?
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.captionText)
-                .foregroundStyle(.secondary)
+            if let title {
+                Text(title)
+                    .font(.captionText)
+                    .foregroundStyle(.secondary)
+            }
             content
         }
         .accessibilityElement(children: .combine)
@@ -314,9 +296,6 @@ private struct RankingHeader: View {
 
     var body: some View {
         HStack {
-            Text("Top apps")
-                .font(.subheadText.weight(.semibold))
-                .foregroundStyle(.secondary)
             Spacer()
             Picker("Rank apps by", selection: $metric) {
                 ForEach(Self.options) { Text($0.title).tag($0) }
@@ -324,7 +303,6 @@ private struct RankingHeader: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-            .help("Choose what the apps below are ranked by")
         }
     }
 }
@@ -360,7 +338,6 @@ private struct GroupRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Open \(group.name) in Herd")
             .accessibilityAction(named: "Quit \(group.name)") { if canAct { quit() } }
             quitSlot
         }
@@ -385,7 +362,7 @@ private struct GroupRow: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
-            .help("Quit \(group.name)")
+            .help("Quit")
             .accessibilityLabel("Quit \(group.name)")
         } else {
             Color.clear.frame(width: 16, height: 16)
@@ -407,7 +384,7 @@ private struct PlaceholderRow: View {
     var body: some View {
         HStack(spacing: Theme.itemSpacing) {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(.quaternary)
+                .fill(Theme.track)
                 .frame(width: 16, height: 16)
             Text("Application name")
             Spacer()
@@ -440,7 +417,6 @@ private struct MenuBarFooter: View {
             Button("Open Herd", action: openMain)
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.accent)
-                .help("Open the main Herd window")
             Spacer()
             SettingsLink {
                 Image(systemName: "gearshape")
@@ -449,11 +425,52 @@ private struct MenuBarFooter: View {
             }
             .buttonStyle(.borderless)
             .simultaneousGesture(TapGesture().onEnded { NSApp.activate() })
-            .help("Open Herd Settings")
+            .help("Settings")
             .accessibilityLabel("Settings")
-            Button("Quit Herd") { NSApp.terminate(nil) }
+            Button("Quit") { NSApp.terminate(nil) }
                 .buttonStyle(.borderless)
-                .help("Quit Herd and remove it from the menu bar")
+                .accessibilityLabel("Quit Herd")
         }
+    }
+}
+
+struct PressureGauge: View {
+    let used: UInt64
+    let total: UInt64
+    let pressure: MemoryPressure
+
+    private var fraction: Double {
+        total > 0 ? min(Double(used) / Double(total), 1) : 0
+    }
+
+    private var color: Color {
+        pressure == .normal ? Theme.accent : Theme.pressureColor(pressure)
+    }
+
+    private var accessibilityText: String {
+        switch pressure {
+        case .normal: "Memory \(Int(fraction * 100)) percent used"
+        case .warning: "Memory pressure high"
+        case .critical: "Memory pressure critical"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.track)
+                    Capsule().fill(color).frame(width: proxy.size.width * fraction)
+                }
+            }
+            .frame(height: 4)
+            if pressure != .normal {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.footnoteText)
+                    .foregroundStyle(color)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
     }
 }

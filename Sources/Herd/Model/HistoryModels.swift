@@ -50,6 +50,7 @@ struct SystemPoint: Sendable, Codable, Identifiable, Equatable {
     var systemWatts: Double?
     var cpuCelsius: Double?
     var gpuCelsius: Double?
+    var lidCelsius: Double?
     var fanRPM: Double?
     var batteryPercent: Double?
     var batteryWatts: Double?
