@@ -30,6 +30,7 @@ struct ProcessTableView: View {
                 guard !ids.isEmpty else { return }
                 onOpen()
             }
+            .onDeleteCommand(perform: quitSelection)
             .onAppear(perform: restoreColumns)
             .onChange(of: columnCustomization) { _, customization in
                 columnStorage = (try? JSONEncoder().encode(customization)) ?? Data()
@@ -122,6 +123,15 @@ struct ProcessTableView: View {
     private func restoreColumns() {
         guard let saved = try? JSONDecoder().decode(TableColumnCustomization<TableRowItem>.self, from: columnStorage) else { return }
         columnCustomization = saved
+    }
+
+    private func quitSelection() {
+        guard let id = selection, let row = resolve([id]).first else { return }
+        if row.quitsSingleProcess, let process = row.process {
+            actions.request(.quit, on: process.sample, groupName: row.group.name)
+        } else {
+            actions.request(.quit, on: row.group)
+        }
     }
 
     private func isOpen(_ id: String) -> Bool {
@@ -286,11 +296,14 @@ private struct RowMenu: View {
 
     @Environment(\.openWindow) private var openWindow
 
+    private static let quitShortcut = KeyboardShortcut(.delete, modifiers: [])
+
     var body: some View {
         if let row = rows.first {
             let group = row.group
             Section(group.name) {
                 groupButton(.quit, title: "Quit \(group.name)", group)
+                    .keyboardShortcut(row.quitsSingleProcess ? nil : Self.quitShortcut)
                 groupButton(.forceQuit, title: "Force Quit \(group.name)", group)
                 if group.isSuspended {
                     groupButton(.resume, title: "Resume", group)
@@ -298,9 +311,10 @@ private struct RowMenu: View {
                     groupButton(.suspend, title: "Pause", group)
                 }
             }
-            if row.role == .process, let process = row.process, row.group.processes.count > 1 {
+            if row.quitsSingleProcess, let process = row.process {
                 Section("This process (\(process.sample.pid))") {
                     processButton(.quit, title: "Quit Process", process.sample, group: group)
+                        .keyboardShortcut(Self.quitShortcut)
                     processButton(.forceQuit, title: "Force Quit Process", process.sample, group: group)
                     if process.sample.isSuspended {
                         processButton(.resume, title: "Resume Process", process.sample, group: group)
