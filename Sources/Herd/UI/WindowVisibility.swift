@@ -23,7 +23,7 @@ struct WindowVisibilityReader: NSViewRepresentable {
             observers.forEach(NotificationCenter.default.removeObserver)
             observers = []
             guard let window else {
-                DispatchQueue.main.async { [weak self] in self?.onChange?(false) }
+                reportCurrentState()
                 return
             }
             let names: [Notification.Name] = [NSWindow.didChangeOcclusionStateNotification, NSWindow.willCloseNotification]
@@ -35,8 +35,16 @@ struct WindowVisibilityReader: NSViewRepresentable {
                     }
                 }
             }
-            let isVisible = window.occlusionState.contains(.visible)
-            DispatchQueue.main.async { [weak self] in self?.onChange?(isVisible) }
+            reportCurrentState()
+        }
+
+        // The state is read when the deferred call runs, not when it's queued: an occlusion notification can be delivered
+        // in between, and a value captured earlier would overwrite it with a stale "not visible" and leave the window blank.
+        private func reportCurrentState() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.onChange?(self.window?.occlusionState.contains(.visible) ?? false)
+            }
         }
     }
 }
