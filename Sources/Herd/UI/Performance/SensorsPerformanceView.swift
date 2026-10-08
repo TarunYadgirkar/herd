@@ -25,18 +25,29 @@ struct SensorsPerformanceView: View {
                 context: context,
                 includesZero: false
             )
-            if !sensors.fans.isEmpty {
-                PerformanceChart(
-                    title: "Fan speed",
-                    series: [ChartSeries(name: "Fan", color: ChartPalette.fan, values: context.values { $0.fanRPM })],
-                    unit: .rpm,
-                    context: context,
-                    height: 160
-                )
-            }
+            if !sensors.fans.isEmpty { fanChart }
             SensorListCard(sensors: sensors)
         } else {
             SectionMessage(title: PerformanceCopy.unavailable, symbol: PerformanceSection.sensors.symbol)
+        }
+    }
+
+    @ViewBuilder
+    private var fanChart: some View {
+        if (context.peak { $0.fanRPM } ?? 0) > 0 {
+            PerformanceChart(
+                title: "Fan speed",
+                series: [ChartSeries(name: "Fan", color: ChartPalette.fan, values: context.values { $0.fanRPM })],
+                unit: .rpm,
+                context: context,
+                height: 160
+            )
+        } else {
+            ChartCard(title: "Fan speed", legend: []) {
+                Label("Fans off", systemImage: "fan")
+                    .font(.calloutText)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -65,7 +76,7 @@ struct ThermalBadge: View {
                 Image(systemName: style.symbol)
                 if thermal == .critical { Image(systemName: "tortoise.fill") }
             }
-            .font(.headline)
+            .font(.headlineText)
             .foregroundStyle(style.color)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(style.label)
@@ -133,7 +144,7 @@ private struct ZoneRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: Theme.groupSpacing) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.weight(.semibold))
+                Text(title).font(.subheadText.weight(.semibold))
                 if let hottest {
                     Text(PerformanceFormat.celsius(hottest))
                         .font(.displaySmall)
@@ -230,7 +241,7 @@ private struct NamedReadings: View {
             ForEach(readings) { reading in
                 HStack(spacing: Theme.itemSpacing) {
                     Text(reading.name)
-                        .font(.callout)
+                        .font(.calloutText)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: Theme.itemSpacing)

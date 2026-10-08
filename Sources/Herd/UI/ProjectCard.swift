@@ -22,7 +22,7 @@ struct ProjectCard: View {
         }
         .padding(Theme.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+        .surface()
     }
 
     private var header: some View {
@@ -31,7 +31,7 @@ struct ProjectCard: View {
             GroupIcon(group: summary.group, size: Self.iconSize)
             VStack(alignment: .leading, spacing: 2) {
                 Text(summary.name)
-                    .font(.headline)
+                    .font(.headlineText)
                     .lineLimit(1)
                 if let root = summary.root {
                     Text(ScriptLabel.abbreviate(root))
@@ -80,11 +80,11 @@ struct ProjectCard: View {
     private var tags: some View {
         HStack(spacing: Theme.itemSpacing) {
             Text(summary.runtimes.map(\.rawValue).joined(separator: " · "))
-                .font(.caption)
+                .font(.captionText)
                 .foregroundStyle(.secondary)
             ForEach(summary.launchers, id: \.self) { launcher in
                 LauncherLabel(launcher: launcher)
-                    .font(.caption)
+                    .font(.captionText)
             }
             ForEach(summary.ports, id: \.self) { port in
                 StatePill(text: ":\(port)", color: Theme.accent)
@@ -127,7 +127,7 @@ private struct MetricCell: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: symbol)
-                .font(.caption)
+                .font(.captionText)
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.metric)
@@ -160,7 +160,7 @@ private struct ProjectProcessList: View {
                 Text(process.title).lineLimit(1)
                 if let subtitle = process.subtitle {
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.captionText)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)

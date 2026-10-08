@@ -276,7 +276,7 @@ private struct StatColumn<Content: View>: View {
         VStack(alignment: .leading, spacing: 4) {
             if let title {
                 Text(title)
-                    .font(.caption)
+                    .font(.captionText)
                     .foregroundStyle(.secondary)
             }
             content
@@ -294,10 +294,10 @@ private struct RateLine: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: symbol)
-                .font(.caption2.weight(.bold))
+                .font(.footnoteText.weight(.bold))
                 .foregroundStyle(color)
             Text(Format.rate(rate))
-                .font(.callout.monospacedDigit())
+                .font(.calloutText.monospacedDigit())
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label) \(Format.rate(rate))")
@@ -371,7 +371,7 @@ private struct GroupRow: View {
         if isHovered && canAct {
             Button(action: quit) {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
+                    .font(.captionText.weight(.semibold))
                     .frame(width: 16, height: 16)
                     .contentShape(Rectangle())
             }
@@ -399,7 +399,7 @@ private struct PlaceholderRow: View {
     var body: some View {
         HStack(spacing: Theme.itemSpacing) {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(.quaternary)
+                .fill(Theme.track)
                 .frame(width: 16, height: 16)
             Text("Application name")
             Spacer()
@@ -417,7 +417,7 @@ private struct FeedbackLine: View {
 
     var body: some View {
         Label(message, systemImage: "info.circle")
-            .font(.callout)
+            .font(.calloutText)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .transition(.opacity)
@@ -474,14 +474,14 @@ struct PressureGauge: View {
         HStack(spacing: 4) {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.quaternary)
+                    Capsule().fill(Theme.track)
                     Capsule().fill(color).frame(width: proxy.size.width * fraction)
                 }
             }
             .frame(height: 4)
             if pressure != .normal {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption2)
+                    .font(.footnoteText)
                     .foregroundStyle(color)
             }
         }

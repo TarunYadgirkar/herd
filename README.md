@@ -16,6 +16,7 @@ swift build                      # debug build
 swift test                       # parser and grouping tests
 ./scripts/build-app.sh           # release build packaged as build/Herd.app
 ./scripts/build-app.sh --install # also copies it to /Applications
+swiftlint lint                   # cyclomatic complexity stays at 15 or below
 ```
 
 ## Layout
@@ -30,3 +31,5 @@ swift test                       # parser and grouping tests
 | `Tests/HerdTests` | Fixture tests for the `top` row parser, bundle detection, and script labeling |
 
 Design tokens (colors, fonts, spacing) live in `Sources/Herd/UI/Theme.swift`. Use them instead of raw values.
+
+The interface is set in Red Hat Text, with Red Hat Display for large numbers. Both ship in `Resources/Fonts` under the SIL Open Font License, and the app bundle registers them through `ATSApplicationFontsPath`.

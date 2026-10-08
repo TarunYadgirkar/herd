@@ -72,9 +72,12 @@ final class ProcessSampler {
             top.start()
             return
         }
-        let top = top
-        pendingTopStop = Task {
-            try? await Task.sleep(for: Self.topIdleGrace)
+        pendingTopStop = Self.stopAfterGrace(top)
+    }
+
+    private static func stopAfterGrace(_ top: TopStream) -> Task<Void, Never> {
+        Task.detached {
+            try? await Task.sleep(for: topIdleGrace)
             guard !Task.isCancelled else { return }
             top.stop()
         }

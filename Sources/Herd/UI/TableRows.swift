@@ -57,6 +57,7 @@ struct TableRowItem: Identifiable, Sendable, Equatable {
     var disk: Double { metrics.disk }
     var threads: Int { metrics.threads }
     var sortTitle: String { title.lowercased() }
+    var quitsSingleProcess: Bool { role == .process && process != nil && group.processes.count > 1 }
     var pid: pid_t? { process?.sample.pid }
 }
 

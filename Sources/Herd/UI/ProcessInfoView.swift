@@ -182,11 +182,11 @@ private struct InfoHeader: View {
                 icon
                 VStack(alignment: .leading, spacing: 2) {
                     Text(sample.name)
-                        .font(.title2.weight(.semibold))
+                        .font(.sectionTitle)
                         .lineLimit(2)
                         .textSelection(.enabled)
                     subtitle
-                        .font(.subheadline.monospacedDigit())
+                        .font(.subheadText.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -213,19 +213,14 @@ private struct InfoHeader: View {
                 .frame(width: Self.iconSize, height: Self.iconSize)
                 .accessibilityHidden(true)
         } else {
-            Image(systemName: "terminal")
-                .font(.system(size: Self.iconSize * 0.5, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: Self.iconSize, height: Self.iconSize)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: Self.iconSize * 0.24, style: .continuous))
-                .accessibilityHidden(true)
+            FallbackIcon(symbol: "terminal", size: Self.iconSize)
         }
     }
 
     private var pathRow: some View {
         HStack(spacing: Theme.itemSpacing) {
             Text(ScriptLabel.abbreviate(sample.path))
-                .font(.caption)
+                .font(.captionText)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -288,7 +283,7 @@ private struct InfoActions: View {
     }
 
     private var efficiencyToggle: some View {
-        Toggle(isOn: Binding(get: { isEfficiencyMode ?? false }, set: onEfficiency)) {
+        Toggle(isOn: Binding(get: { isEfficiencyMode ?? false }, set: { onEfficiency($0) })) {
             Label("Efficiency", systemImage: "leaf")
         }
         .toggleStyle(.button)
@@ -336,7 +331,7 @@ private struct StatTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.caption)
+                .font(.captionText)
                 .foregroundStyle(.secondary)
             Text(value ?? "–")
                 .font(.displaySmall)
@@ -347,7 +342,7 @@ private struct StatTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, Theme.itemSpacing)
-        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+        .surface()
         .accessibilityElement(children: .combine)
         .accessibilityValue(value ?? "Not available")
     }
@@ -359,7 +354,7 @@ private struct InfoToast: View {
     var body: some View {
         if let message {
             Text(message)
-                .font(.callout)
+                .font(.calloutText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)

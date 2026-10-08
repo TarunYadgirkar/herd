@@ -30,6 +30,7 @@ struct ProcessTableView: View {
                 guard !ids.isEmpty else { return }
                 onOpen()
             }
+            .onDeleteCommand(perform: quitSelection)
             .onAppear(perform: restoreColumns)
             .onChange(of: columnCustomization) { _, customization in
                 columnStorage = (try? JSONEncoder().encode(customization)) ?? Data()
@@ -124,6 +125,15 @@ struct ProcessTableView: View {
         columnCustomization = saved
     }
 
+    private func quitSelection() {
+        guard let id = selection, let row = resolve([id]).first else { return }
+        if row.quitsSingleProcess, let process = row.process {
+            actions.request(.quit, on: process.sample, groupName: row.group.name)
+        } else {
+            actions.request(.quit, on: row.group)
+        }
+    }
+
     private func isOpen(_ id: String) -> Bool {
         isSearching || expanded.contains(id)
     }
@@ -151,7 +161,7 @@ struct ProcessTableView: View {
                 HeatValue(column: column, value: row[keyPath: value])
             }
         }
-        .width(min: 64, ideal: column == .network || column == .disk || column == .impact || column == .energy ? 84 : 72)
+        .width(min: 64, ideal: column == .network || column == .disk || column == .impact || column == .energy ? 104 : 76)
         .customizationID(column.rawValue)
         .defaultVisibility(column == .disk ? .hidden : .automatic)
     }
@@ -185,7 +195,7 @@ private struct NameCell: View {
                     .layoutPriority(1)
                 if let subtitle = row.subtitle {
                     Text(subtitle)
-                        .font(.callout)
+                        .font(.calloutText)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.head)
@@ -195,9 +205,10 @@ private struct NameCell: View {
             ForEach(ports, id: \.self) { port in
                 Text(":" + String(port))
                     .font(.metricSmall)
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 5)
-                    .background(Theme.accent.opacity(0.12), in: Capsule())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Theme.surfaceRaised, in: Capsule())
                     .accessibilityLabel("Port " + String(port))
             }
             if !sleepReasons.isEmpty {
@@ -217,7 +228,7 @@ private struct NameCell: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
-                    .background(.quaternary, in: Capsule())
+                    .background(Theme.surfaceRaised, in: Capsule())
                     .accessibilityLabel("\(row.count) processes")
             }
         }
@@ -265,15 +276,17 @@ private struct TrendCell: View {
     var body: some View {
         if row.role == .group {
             let series = history(row.id).series(for: column)
-            Sparkline(values: series.values, color: color(series.latest), ceiling: column.heatRange.lowerBound * 2)
-                .frame(height: 18)
+            Sparkline(values: series.values, color: color(series.latest), ceiling: column.trendFloor)
+                .frame(height: 20)
                 .padding(.vertical, 2)
         }
     }
 
+    private static let heatedTrend = 0.6
+
     private func color(_ latest: Double) -> Color {
         let heat = column.heat(latest)
-        return heat > 0.5 ? Theme.heatColor(heat) : Theme.accent
+        return heat > Self.heatedTrend ? Theme.heatColor(heat) : Theme.accent
     }
 }
 
@@ -283,11 +296,14 @@ private struct RowMenu: View {
 
     @Environment(\.openWindow) private var openWindow
 
+    private static let quitShortcut = KeyboardShortcut(.delete, modifiers: [])
+
     var body: some View {
         if let row = rows.first {
             let group = row.group
             Section(group.name) {
                 groupButton(.quit, title: "Quit \(group.name)", group)
+                    .keyboardShortcut(row.quitsSingleProcess ? nil : Self.quitShortcut)
                 groupButton(.forceQuit, title: "Force Quit \(group.name)", group)
                 if group.isSuspended {
                     groupButton(.resume, title: "Resume", group)
@@ -295,9 +311,10 @@ private struct RowMenu: View {
                     groupButton(.suspend, title: "Pause", group)
                 }
             }
-            if row.role == .process, let process = row.process, row.group.processes.count > 1 {
+            if row.quitsSingleProcess, let process = row.process {
                 Section("This process (\(process.sample.pid))") {
                     processButton(.quit, title: "Quit Process", process.sample, group: group)
+                        .keyboardShortcut(Self.quitShortcut)
                     processButton(.forceQuit, title: "Force Quit Process", process.sample, group: group)
                     if process.sample.isSuspended {
                         processButton(.resume, title: "Resume Process", process.sample, group: group)
