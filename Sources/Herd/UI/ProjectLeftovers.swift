@@ -64,7 +64,7 @@ private struct SetHeader: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.body.weight(.semibold))
+                    .font(.headlineText)
                 Text("×\(count)")
                     .font(.metric)
                     .foregroundStyle(.secondary)

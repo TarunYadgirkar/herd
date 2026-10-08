@@ -147,7 +147,7 @@ struct ChartCallout: View {
                             HStack(spacing: 5) {
                                 UsageIcon(bundlePath: app.bundlePath, size: Self.appIconSize)
                                 Text(app.name)
-                                    .font(.caption)
+                                    .font(.captionText)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                     .frame(maxWidth: Self.appNameWidth, alignment: .leading)
