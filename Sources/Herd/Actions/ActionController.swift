@@ -5,6 +5,7 @@ struct PendingAction: Identifiable {
     enum Target {
         case group(AppGroup)
         case process(ProcessSample, groupName: String)
+        case processes([LabeledProcess], title: String)
     }
 
     let action: ProcessAction
@@ -20,10 +21,16 @@ struct PendingAction: Identifiable {
         target = .process(process, groupName: groupName)
     }
 
+    init(action: ProcessAction, processes: [LabeledProcess], title: String) {
+        self.action = action
+        target = .processes(processes, title: title)
+    }
+
     var id: String {
         switch target {
         case .group(let group): "\(action.rawValue):\(group.id)"
         case .process(let sample, _): "\(action.rawValue):\(sample.id)"
+        case .processes(let items, _): "\(action.rawValue):" + items.map(\.sample.id).joined(separator: ",")
         }
     }
 
@@ -31,6 +38,7 @@ struct PendingAction: Identifiable {
         switch target {
         case .group(let group): group.name
         case .process(let sample, _): sample.name
+        case .processes(_, let title): title
         }
     }
 
@@ -41,6 +49,8 @@ struct PendingAction: Identifiable {
             return "\(action.title) \(group.name)\(count > 1 ? " and its \(count) processes" : "")?"
         case .process(let sample, let groupName):
             return "\(action.title) \(sample.name) (\(sample.pid)) from \(groupName)?"
+        case .processes(_, let title):
+            return "\(action.title) \(title)?"
         }
     }
 
@@ -51,6 +61,11 @@ struct PendingAction: Identifiable {
     }
 
     var message: String {
+        if case .processes(let items, _) = target { return Self.listing(items, action: action) }
+        return standardMessage
+    }
+
+    private var standardMessage: String {
         switch action {
         case .forceQuit: "Unsaved changes in \(name) will be lost."
         case .quit: quitsLikeAnApp
@@ -59,6 +74,11 @@ struct PendingAction: Identifiable {
         case .suspend: "\(name) will freeze until you resume it. Herd resumes it automatically if Herd quits."
         case .resume: "\(name) will continue where it left off."
         }
+    }
+
+    private static func listing(_ items: [LabeledProcess], action: ProcessAction) -> String {
+        let lines = items.map { "\($0.label) (\($0.sample.pid))" }.joined(separator: "\n")
+        return "Herd will send \(action.title) to:\n\(lines)"
     }
 }
 
@@ -90,6 +110,15 @@ final class ActionController {
             return
         }
         ask(PendingAction(action: action, process: sample, groupName: groupName))
+    }
+
+    func request(_ action: ProcessAction, on items: [LabeledProcess], title: String) {
+        let allowed = items.filter { !ProcessActions.isProtected($0.sample, for: action) }
+        guard !allowed.isEmpty else {
+            show("\(title) keeps macOS running, so Herd won't \(action.title.lowercased()) it.")
+            return
+        }
+        ask(PendingAction(action: action, processes: allowed, title: title))
     }
 
     func confirm() {
@@ -152,6 +181,13 @@ final class ActionController {
                 return
             }
             show(ProcessActions.perform(pending.action, on: current).message(for: pending.action, name: current.name))
+        case .processes(let items, let title):
+            let current = items.compactMap { store.liveProcess(id: $0.sample.id) }
+            guard !current.isEmpty else {
+                show("\(title) had already exited.")
+                return
+            }
+            show(ProcessActions.perform(pending.action, on: current).message(for: pending.action, name: title))
         }
     }
 }

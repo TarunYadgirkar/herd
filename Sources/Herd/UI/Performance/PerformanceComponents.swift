@@ -107,9 +107,20 @@ struct CalloutRow: Identifiable {
     var id: String { name }
 }
 
+struct CalloutApp: Identifiable {
+    let id: String
+    let name: String
+    let bundlePath: String?
+    let value: String
+}
+
 struct ChartCallout: View {
     let time: String
     let rows: [CalloutRow]
+    var apps: [CalloutApp] = []
+
+    private static let appIconSize: CGFloat = 14
+    private static let appNameWidth: CGFloat = 140
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -127,6 +138,24 @@ struct ChartCallout: View {
                             .font(.metricSmall)
                             .fixedSize()
                             .gridColumnAlignment(.trailing)
+                    }
+                }
+                if !apps.isEmpty {
+                    Divider().gridCellUnsizedAxes(.horizontal)
+                    ForEach(apps) { app in
+                        GridRow {
+                            HStack(spacing: 5) {
+                                UsageIcon(bundlePath: app.bundlePath, size: Self.appIconSize)
+                                Text(app.name)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .frame(maxWidth: Self.appNameWidth, alignment: .leading)
+                            }
+                            Text(app.value)
+                                .font(.metricSmall)
+                                .fixedSize()
+                        }
                     }
                 }
             }

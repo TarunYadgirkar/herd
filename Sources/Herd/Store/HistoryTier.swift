@@ -69,9 +69,13 @@ struct PointAccumulator {
     private var sums = [Double](repeating: 0, count: meanFields.count)
     private var optionalSums = [Double](repeating: 0, count: optionalFields.count)
     private var optionalCounts = [Int](repeating: 0, count: optionalFields.count)
+    private var contributors = ContributorAccumulator()
+
+    var date: Date? { count > 0 ? Date(timeIntervalSinceReferenceDate: dateSum / Double(count)) : nil }
 
     mutating func add(_ point: SystemPoint) {
         count += 1
+        contributors.add(point.contributors)
         dateSum += point.date.timeIntervalSinceReferenceDate
         pressure = max(pressure, point.pressure)
         for (index, field) in Self.meanFields.enumerated() { sums[index] += point[keyPath: field] }
@@ -83,15 +87,53 @@ struct PointAccumulator {
     }
 
     func average() -> SystemPoint? {
-        guard count > 0 else { return nil }
+        guard let date else { return nil }
         let total = Double(count)
-        var point = SystemPoint.empty(at: Date(timeIntervalSinceReferenceDate: dateSum / total))
+        var point = SystemPoint.empty(at: date)
         point.pressure = pressure
+        point.contributors = contributors.merged()
         for (index, field) in Self.meanFields.enumerated() { point[keyPath: field] = sums[index] / total }
         for (index, field) in Self.optionalFields.enumerated() where optionalCounts[index] > 0 {
             point[keyPath: field] = optionalSums[index] / Double(optionalCounts[index])
         }
         return point
+    }
+}
+
+// Samples without contributor data (older files) don't count, so they can't dilute the averages of samples that have it.
+struct ContributorAccumulator {
+    private struct Totals {
+        var latest: Contributor
+        var cpu: Double = 0
+        var energy: Double = 0
+        var memory: UInt64 = 0
+    }
+
+    private var totals: [String: Totals] = [:]
+    private var samples = 0
+
+    mutating func add(_ contributors: [Contributor]?) {
+        guard let contributors else { return }
+        samples += 1
+        for contributor in contributors {
+            var entry = totals[contributor.id] ?? Totals(latest: contributor)
+            entry.latest = contributor
+            entry.cpu += contributor.cpu
+            entry.energy += contributor.energy
+            entry.memory = max(entry.memory, contributor.memory)
+            totals[contributor.id] = entry
+        }
+    }
+
+    func merged() -> [Contributor]? {
+        guard samples > 0 else { return nil }
+        let count = Double(samples)
+        return Contributor.leaders(totals.values.map { entry in
+            Contributor(
+                id: entry.latest.id, name: entry.latest.name, bundlePath: entry.latest.bundlePath,
+                cpu: entry.cpu / count, memory: entry.memory, energy: entry.energy / count
+            )
+        })
     }
 }
 
@@ -110,7 +152,7 @@ struct HistoryTier {
     }
 
     var partial: SystemPoint? { pending.average() }
-    var latestDate: Date? { partial?.date ?? ring.last?.date }
+    var latestDate: Date? { pending.date ?? ring.last?.date }
 
     mutating func add(_ point: SystemPoint) {
         defer { ring.drop(before: point.date.addingTimeInterval(-retention)) }
@@ -131,7 +173,7 @@ struct HistoryTier {
     }
 
     func firstDate(since cutoff: Date) -> Date? {
-        ring.slice(since: cutoff).first?.date ?? (partialIncluded(since: cutoff) ? partial?.date : nil)
+        ring.slice(since: cutoff).first?.date ?? (partialIncluded(since: cutoff) ? pending.date : nil)
     }
 
     func points(since cutoff: Date) -> [SystemPoint] {
@@ -145,8 +187,8 @@ struct HistoryTier {
     }
 
     private func partialIncluded(since cutoff: Date) -> Bool {
-        guard let partial else { return false }
-        return partial.date >= cutoff
+        guard let date = pending.date else { return false }
+        return date >= cutoff
     }
 
     private mutating func flush() {
@@ -196,6 +238,13 @@ extension SystemPoint {
             batteryPercent: snapshot.batteryDetails?.percent ?? snapshot.battery?.percent,
             batteryWatts: snapshot.batteryDetails?.watts
         )
+    }
+}
+
+extension Contributor {
+    init(_ group: AppGroup) {
+        let metrics = group.metrics
+        self.init(id: group.id, name: group.name, bundlePath: group.bundlePath, cpu: metrics.cpu, memory: metrics.memory, energy: metrics.energy)
     }
 }
 

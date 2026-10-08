@@ -9,6 +9,7 @@ struct PerformanceChart: View {
     var yDomain: ClosedRange<Double>?
     var includesZero = true
     var height: CGFloat = 200
+    var contributors: ContributorMetric?
 
     var body: some View {
         ChartCard(title: title, legend: series.count > 1 ? series.map(LegendItem.init) : []) {
@@ -24,8 +25,8 @@ struct PerformanceChart: View {
             ChartMessage(text: PerformanceCopy.unavailable, height: height)
         } else {
             PlotView(
-                plots: series.map { SeriesPlot(series: $0, points: $0.plotPoints(dates: context.dates)) },
-                unit: unit, context: context, yDomain: yDomain, includesZero: includesZero
+                plots: series.map { SeriesPlot(series: $0, points: $0.plotPoints(dates: context.dates, segments: context.segments)) },
+                unit: unit, context: context, yDomain: yDomain, includesZero: includesZero, contributors: contributors
             )
             .frame(height: height)
             .accessibilityLabel(title)
@@ -72,6 +73,7 @@ private struct PlotView: View {
     let context: PerformanceContext
     let yDomain: ClosedRange<Double>?
     let includesZero: Bool
+    let contributors: ContributorMetric?
 
     private static let calloutGap: CGFloat = 8
 
@@ -167,7 +169,7 @@ private struct PlotView: View {
             return
         }
         guard let date: Date = proxy.value(atX: location.x - plotFrame.minX),
-              let index = SeriesMath.nearestIndex(in: context.dates, to: date, tolerance: context.gapLimit) else {
+              let index = SeriesMath.nearestIndex(in: context.dates, to: date, tolerance: context.maxGap) else {
             if context.selection.wrappedValue != nil { context.selection.wrappedValue = nil }
             return
         }
@@ -180,7 +182,8 @@ private struct PlotView: View {
             time: TimeAxis.calloutLabel(for: context.dates[index], anchor: context.anchor, range: context.historyRange),
             rows: plots.compactMap { plot in
                 plot.series.calloutValue(at: index).map { CalloutRow(name: plot.series.name, color: plot.series.color, value: unit.value($0)) }
-            }
+            },
+            apps: contributors.map { $0.leaders(context.points[index].contributors ?? []) } ?? []
         )
     }
 }

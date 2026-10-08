@@ -31,11 +31,12 @@ struct ChartSeries: Identifiable {
     var latest: Double? { values.last { $0 != nil } ?? nil }
     var peak: Double? { values.compactMap { $0 }.max() }
 
-    func plotPoints(dates: [Date]) -> [PlotPoint] {
+    // Each contiguous run gets its own series key, so Swift Charts breaks the line across gaps instead of bridging them.
+    func plotPoints(dates: [Date], segments: [Int]) -> [PlotPoint] {
         zip(dates, values).enumerated().compactMap { index, pair in
             guard let value = pair.1 else { return nil }
             let low = baseline?[index] ?? 0
-            return PlotPoint(date: pair.0, low: low * direction, high: (low + value) * direction, series: name)
+            return PlotPoint(date: pair.0, low: low * direction, high: (low + value) * direction, series: "\(name)#\(segments[index])")
         }
     }
 
@@ -43,6 +44,38 @@ struct ChartSeries: Identifiable {
         guard values.indices.contains(index), let value = values[index] else { return nil }
         if hidesZeroInCallout && value == 0 { return nil }
         return value
+    }
+}
+
+enum ContributorMetric {
+    case cpu
+    case memory
+    case energy
+
+    private static let calloutLimit = 3
+
+    func value(_ contributor: Contributor) -> Double {
+        switch self {
+        case .cpu: contributor.cpu
+        case .memory: Double(contributor.memory)
+        case .energy: contributor.energy
+        }
+    }
+
+    func format(_ value: Double) -> String {
+        switch self {
+        case .cpu: Format.percent(value)
+        case .memory: PerformanceFormat.bytes(value)
+        case .energy: Format.watts(value)
+        }
+    }
+
+    func leaders(_ contributors: [Contributor]) -> [CalloutApp] {
+        contributors
+            .filter { value($0) > 0 }
+            .sorted { value($0) > value($1) }
+            .prefix(Self.calloutLimit)
+            .map { CalloutApp(id: $0.id, name: $0.name, bundlePath: $0.bundlePath, value: format(value($0))) }
     }
 }
 
@@ -75,18 +108,16 @@ enum SeriesMath {
         }
     }
 
+    // Beyond the tolerance the pointer is past the data or inside a gap, where no sample describes that moment.
     static func nearestIndex(in dates: [Date], to target: Date, tolerance: TimeInterval) -> Int? {
-        guard let first = dates.first, let last = dates.last else { return nil }
-        guard target >= first.addingTimeInterval(-tolerance), target <= last.addingTimeInterval(tolerance) else { return nil }
+        guard !dates.isEmpty else { return nil }
         var low = 0
         var high = dates.count - 1
         while low < high {
             let mid = (low + high) / 2
             if dates[mid] < target { low = mid + 1 } else { high = mid }
         }
-        guard low > 0 else { return low }
-        let before = target.timeIntervalSince(dates[low - 1])
-        let after = dates[low].timeIntervalSince(target)
-        return before < after ? low - 1 : low
+        let nearest = low > 0 && target.timeIntervalSince(dates[low - 1]) < dates[low].timeIntervalSince(target) ? low - 1 : low
+        return abs(dates[nearest].timeIntervalSince(target)) <= tolerance ? nearest : nil
     }
 }

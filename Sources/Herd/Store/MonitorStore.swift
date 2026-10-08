@@ -39,9 +39,11 @@ final class MonitorStore {
     private(set) var groupHistory: [String: GroupHistory] = [:]
     private(set) var processCount = 0
     private(set) var hasFirstFrame = false
+    private(set) var projectActivity = ActivityLedger()
     let archive = HistoryArchive()
     @ObservationIgnored let alerts = AlertMonitor()
     @ObservationIgnored let dockGraph = DockTileGraph()
+    @ObservationIgnored private let projectTracker = ProjectTracker()
 
     var isPaused = false
     var requestedSelection: String?
@@ -169,6 +171,7 @@ final class MonitorStore {
             alerts.evaluate(frame, maxGap: interval.rawValue * Self.gapIntervals)
         }
         latestFrame = frame
+        projectTracker.record(frame.groups, at: frame.date)
         dockGraph.update(cpu: frame.system.cpuTotal)
         let nextHeadline = Headline(cpu: frame.system.cpuTotal, memoryUsed: frame.system.memoryUsed)
         if nextHeadline != headline { headline = nextHeadline }
@@ -189,6 +192,7 @@ final class MonitorStore {
         groups = latestFrame.groups
         processCount = latestFrame.processCount
         groupHistory = latestGroupHistory
+        projectActivity = projectTracker.ledger
     }
 
     // The first frame has no previous counters, so its rates are all zero and would drag every sparkline down.

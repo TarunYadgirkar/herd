@@ -24,7 +24,8 @@ struct MemoryPerformanceView: View {
             series: memorySeries,
             unit: .bytes,
             context: context,
-            yDomain: 0...Double(max(system.memoryTotal, 1))
+            yDomain: 0...Double(max(system.memoryTotal, 1)),
+            contributors: .memory
         )
         PressureCard(context: context)
         PerformanceChart(
@@ -141,12 +142,15 @@ private struct PressureCard: View {
         let points = context.points
         guard let first = points.first, let last = points.last else { return [] }
         var result: [PressureSegment] = []
+        let runs = context.segments
         var start = first.date
         var level = MemoryPressure(rawValue: first.pressure) ?? .normal
-        for point in points.dropFirst() {
+        for index in points.indices.dropFirst() {
+            let point = points[index]
             let next = MemoryPressure(rawValue: point.pressure) ?? .normal
-            guard next != level else { continue }
-            result.append(PressureSegment(start: start, end: point.date, pressure: level))
+            let isGap = runs[index] != runs[index - 1]
+            guard next != level || isGap else { continue }
+            result.append(PressureSegment(start: start, end: isGap ? points[index - 1].date : point.date, pressure: level))
             start = point.date
             level = next
         }

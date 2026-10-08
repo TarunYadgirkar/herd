@@ -19,7 +19,8 @@ struct EnergyPerformanceView: View {
                 title: "Power use",
                 series: powerSeries,
                 unit: .watts,
-                context: context
+                context: context,
+                contributors: .energy
             )
             EnergyTodayCard(usage: usage)
         } else {

@@ -4,13 +4,17 @@ struct PerformanceContext {
     let system: SystemSnapshot
     let points: [SystemPoint]
     let dates: [Date]
+    let maxGap: TimeInterval
+    let segments: [Int]
     let range: Binding<HistoryRange>
     let selection: Binding<Date?>
 
-    init(system: SystemSnapshot, points: [SystemPoint], range: Binding<HistoryRange>, selection: Binding<Date?>) {
+    init(system: SystemSnapshot, window: HistoryWindow, range: Binding<HistoryRange>, selection: Binding<Date?>) {
         self.system = system
-        self.points = points
-        self.dates = points.map(\.date)
+        self.points = window.points
+        self.dates = window.points.map(\.date)
+        self.maxGap = window.maxGap
+        self.segments = HistoryGaps.segmentIndices(dates, maxGap: window.maxGap)
         self.range = range
         self.selection = selection
     }
@@ -19,11 +23,10 @@ struct PerformanceContext {
     var anchor: Date { dates.last ?? .now }
     var xDomain: ClosedRange<Date> { anchor.addingTimeInterval(-historyRange.seconds)...anchor }
     var isCollecting: Bool { points.count < 2 }
-    var gapLimit: TimeInterval { TimeAxis.gapLimit(for: historyRange) }
 
     var selectedIndex: Int? {
         guard let date = selection.wrappedValue else { return nil }
-        return SeriesMath.nearestIndex(in: dates, to: date, tolerance: gapLimit)
+        return SeriesMath.nearestIndex(in: dates, to: date, tolerance: maxGap)
     }
 
     func values(_ transform: (SystemPoint) -> Double?) -> [Double?] {
@@ -31,7 +34,7 @@ struct PerformanceContext {
     }
 
     func total(_ value: (SystemPoint) -> Double?) -> Double {
-        SeriesMath.integrate(points, gapLimit: gapLimit, value: value)
+        SeriesMath.integrate(points, gapLimit: maxGap, value: value)
     }
 
     func peak(_ value: (SystemPoint) -> Double?) -> Double? {
