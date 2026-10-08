@@ -2,12 +2,14 @@ import SwiftUI
 
 enum SidebarItem: Hashable, Identifiable, RawRepresentable {
     case processes
+    case projects
     case performance(PerformanceSection)
     case history
 
     init?(rawValue: String) {
         switch rawValue {
         case "processes": self = .processes
+        case "projects": self = .projects
         case "history": self = .history
         default:
             guard rawValue.hasPrefix(Self.performancePrefix),
@@ -19,6 +21,7 @@ enum SidebarItem: Hashable, Identifiable, RawRepresentable {
     var rawValue: String {
         switch self {
         case .processes: "processes"
+        case .projects: "projects"
         case .history: "history"
         case .performance(let section): Self.performancePrefix + section.rawValue
         }
@@ -61,6 +64,9 @@ struct RootView: View {
         switch SidebarItem(rawValue: storedItem) ?? .processes {
         case .processes:
             ContentView()
+        case .projects:
+            ProjectsView()
+                .navigationTitle("Projects")
         case .performance(let section):
             PerformanceView(section: section)
                 .navigationTitle(section.title)
@@ -79,6 +85,8 @@ private struct Sidebar: View {
         List(selection: $selection) {
             Label("Processes", systemImage: "list.bullet.rectangle")
                 .tag(SidebarItem.processes)
+            Label("Projects", systemImage: "folder")
+                .tag(SidebarItem.projects)
             Section {
                 ForEach(PerformanceSection.allCases) { section in
                     SidebarRow(title: section.title, symbol: section.symbol, value: section.summary(store.system))

@@ -41,7 +41,8 @@ final class HistoryArchive {
     // whose rates come from short windows and would overcount if stretched across a gap.
     func record(_ system: SystemSnapshot, groups: [AppGroup], elapsed: TimeInterval, rateWindow: TimeInterval, at date: Date) {
         if let latest = latestRecordedDate, date < latest { rewind(to: date) }
-        let point = SystemPoint(system, at: date)
+        var point = SystemPoint(system, at: date)
+        point.contributors = groups.isEmpty ? nil : Contributor.leaders(groups.map(Contributor.init))
         raw.add(point)
         minute.add(point)
         hour.add(point)
@@ -52,10 +53,20 @@ final class HistoryArchive {
     }
 
     func points(in range: HistoryRange) -> [SystemPoint] {
+        window(in: range).points
+    }
+
+    func window(in range: HistoryRange) -> HistoryWindow {
         _ = revision
         let cutoff = latestDate.addingTimeInterval(-range.seconds)
         let tier = bestTier(since: cutoff)
-        return Self.downsample(tier.points(since: cutoff), to: Self.maximumChartPoints)
+        let source = tier.points(since: cutoff)
+        let stretch = max(1, Double(source.count) / Double(Self.maximumChartPoints))
+        let spacing = tier.resolution > 0 ? tier.resolution : HistoryGaps.medianSpacing(source.map(\.date)) ?? Self.minuteResolution
+        return HistoryWindow(
+            points: Self.downsample(source, to: Self.maximumChartPoints),
+            maxGap: HistoryGaps.limit(spacing: spacing, stretch: stretch)
+        )
     }
 
     func corePoints(in range: HistoryRange) -> [CorePoint] {
@@ -193,6 +204,11 @@ extension HistoryArchive {
             log.error("Saving history failed: \(error.localizedDescription, privacy: .public)")
         }
     }
+}
+
+struct HistoryWindow {
+    let points: [SystemPoint]
+    let maxGap: TimeInterval
 }
 
 private struct LedgerDay {

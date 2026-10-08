@@ -87,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let groupID = response.notification.request.content.userInfo[AlertAction.groupKey] as? String
         await MainActor.run {
             guard let groupID else {
-                NSApp.activate()
+                NotificationCenter.default.post(name: .openMainWindow, object: nil)
                 return
             }
             switch action {
@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 AlertSettings.ignore(groupID)
             default:
                 Self.store.requestedSelection = groupID
-                NSApp.activate()
+                NotificationCenter.default.post(name: .openMainWindow, object: nil)
             }
         }
     }

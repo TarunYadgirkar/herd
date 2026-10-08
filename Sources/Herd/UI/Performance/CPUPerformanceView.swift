@@ -21,7 +21,8 @@ struct CPUPerformanceView: View {
             ]),
             unit: .fraction,
             context: context,
-            yDomain: 0...1
+            yDomain: 0...1,
+            contributors: .cpu
         )
         CoreGrid(usage: system.perCoreUsage, history: cores, readings: system.power?.clusters, temperatures: system.sensors?.temperatures ?? [])
     }

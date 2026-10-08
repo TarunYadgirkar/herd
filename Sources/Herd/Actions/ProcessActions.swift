@@ -107,6 +107,10 @@ enum ProcessActions {
         send(action, to: [sample])
     }
 
+    static func perform(_ action: ProcessAction, on samples: [ProcessSample]) -> ActionOutcome {
+        send(action, to: samples)
+    }
+
     private static func send(_ action: ProcessAction, to samples: [ProcessSample]) -> ActionOutcome {
         var succeeded = 0
         var protected: Set<String> = []

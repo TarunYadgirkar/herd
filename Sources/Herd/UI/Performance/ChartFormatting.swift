@@ -128,10 +128,6 @@ enum TimeAxis {
     }
 
     // Gaps longer than this mean Herd wasn't running, so rates aren't carried across them.
-    static func gapLimit(for range: HistoryRange) -> TimeInterval {
-        max(10, 2 * range.seconds / 720)
-    }
-
     private static func spec(for range: HistoryRange) -> Spec? {
         switch range {
         case .minute: Spec(step: 15, unit: 1, suffix: "s")

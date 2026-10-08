@@ -24,7 +24,7 @@ struct PerformanceView: View {
         if store.hasFirstFrame {
             sectionView(PerformanceContext(
                 system: store.system,
-                points: store.archive.points(in: range),
+                window: store.archive.window(in: range),
                 range: $range,
                 selection: $selection
             ))

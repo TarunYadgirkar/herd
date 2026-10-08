@@ -26,13 +26,28 @@ private enum MenuBarFormat {
     }
 }
 
+extension Notification.Name {
+    static let openMainWindow = Notification.Name("HerdOpenMainWindow")
+}
+
 struct MenuBarLabel: View {
     let store: MonitorStore
     @AppStorage("menuBarLabelStyle") private var style: MenuBarLabelStyle = .cpuAndMemory
+    @Environment(\.openWindow) private var openWindow
 
     private static let appSymbol = "gauge.with.dots.needle.33percent"
 
+    // The label lives as long as the app, so it can reopen the main window after it was closed (e.g. from a notification).
     var body: some View {
+        label
+            .onReceive(NotificationCenter.default.publisher(for: .openMainWindow)) { _ in
+                openWindow(id: "main")
+                NSApp.activate()
+            }
+    }
+
+    @ViewBuilder
+    private var label: some View {
         if style == .iconOnly || !store.hasFirstFrame {
             Image(systemName: Self.appSymbol)
                 .accessibilityLabel("Herd")

@@ -90,3 +90,31 @@ private func makeProject(_ root: URL, marker: String) throws {
         #expect(KernelProcessList.process(pid)?.isStopped == false)
     }
 }
+
+@Suite struct LeftoverSafetyTests {
+    private func copy(pid: pid_t, session: pid_t, started: Double, idle: TimeInterval, orphan: Bool = false) -> ProcessCopy {
+        var process = sample(pid: pid, name: "node", path: "/usr/local/bin/node", arguments: ["node", "mcp"], cwd: nil, startTime: Date(timeIntervalSince1970: started))
+        process = ProcessSample(
+            id: process.id, pid: pid, ppid: session, responsiblePid: session, uid: process.uid, name: process.name, path: process.path,
+            arguments: process.arguments, startTime: process.startTime, cpuPercent: 0, memoryBytes: 100, energyWatts: 0, diskReadBps: 0,
+            diskWriteBps: 0, netInBps: 0, netOutBps: 0, gpuPercent: 0, threads: 1, isApproximate: false, isSuspended: false
+        )
+        return ProcessCopy(
+            title: "playwright-mcp", key: "playwright-mcp", members: [LabeledProcess(sample: process, label: "playwright-mcp")],
+            groupID: "runtime:Node.js", projectName: nil, launcher: nil, idle: idle, isOrphan: orphan, isProtected: false
+        )
+    }
+
+    @Test func neverOffersALiveSessionsNewestCopy() throws {
+        let hour: TimeInterval = 3_600
+        let sets = ProjectInsights.duplicates(in: [
+            copy(pid: 1001, session: 500, started: 10, idle: hour),
+            copy(pid: 1002, session: 500, started: 20, idle: hour),
+            copy(pid: 1003, session: 600, started: 30, idle: hour),
+            copy(pid: 1004, session: 700, started: 40, idle: 0, orphan: true),
+        ])
+        let copies = try #require(sets.first).copies
+        let safe = Set(copies.filter { $0.isSafeToStop }.map(\.root.pid))
+        #expect(safe == [1001, 1004])
+    }
+}
