@@ -45,10 +45,10 @@ struct EnergyPerformanceView: View {
             point.systemWatts ?? point.cpuWatts.map { $0 + (point.gpuWatts ?? 0) + (point.aneWatts ?? 0) }
         }
         return [
-            PerformanceStat(label: "CPU", value: Format.watts(power.cpuWatts)),
-            PerformanceStat(label: "GPU", value: Format.watts(power.gpuWatts)),
-            PerformanceStat(label: "Neural Engine", value: Format.watts(power.aneWatts)),
-            PerformanceStat(label: "Memory", value: Format.watts(power.dramWatts)),
+            PerformanceStat(label: "CPU", value: Format.watts(power.cpuWatts), swatch: ChartPalette.cpuPower),
+            PerformanceStat(label: "GPU", value: Format.watts(power.gpuWatts), swatch: ChartPalette.gpuPower),
+            PerformanceStat(label: "Neural Engine", value: Format.watts(power.aneWatts), swatch: ChartPalette.anePower),
+            PerformanceStat(label: "Memory", value: Format.watts(power.dramWatts), swatch: ChartPalette.dramPower),
             PerformanceStat(label: "Used", value: PerformanceFormat.wattHours(used / Self.secondsPerHour)),
         ]
     }
@@ -79,7 +79,7 @@ private struct EnergyTodayCard: View {
                 numberHeader("Network")
                 numberHeader("Disk")
             }
-            .font(.caption)
+            .font(.captionText)
             .foregroundStyle(.secondary)
             Divider()
             ForEach(usage.prefix(Self.rowLimit)) { row in

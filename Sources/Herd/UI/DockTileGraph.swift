@@ -67,10 +67,7 @@ final class DockTileGraph {
     }
 
     private func barColor(_ value: Double) -> NSColor {
-        let accent = NSColor(srgbRed: 0x3A / 255, green: 0xB0 / 255, blue: 0x94 / 255, alpha: 1)
-        let warm = NSColor(srgbRed: 0xD9 / 255, green: 0xA4 / 255, blue: 0x41 / 255, alpha: 1)
-        let hot = NSColor(srgbRed: 0xD9 / 255, green: 0x53 / 255, blue: 0x4F / 255, alpha: 1)
-        if value > 0.85 { return hot }
-        return value > 0.6 ? warm : accent
+        if value > 0.85 { return NSColor(hex: Palette.ember.dark) }
+        return NSColor(hex: value > 0.6 ? Palette.ochre.dark : Palette.pine.dark)
     }
 }

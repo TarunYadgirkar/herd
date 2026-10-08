@@ -46,7 +46,7 @@ private struct PlainNote: View {
                 Text(text)
             }
         }
-        .font(.callout)
+        .font(.calloutText)
         .foregroundStyle(.secondary)
     }
 }
@@ -263,7 +263,7 @@ private struct NetworkSection: View {
                 Text("Remote")
                 Text("State")
             }
-            .font(.caption.weight(.medium))
+            .font(.captionText.weight(.medium))
             .foregroundStyle(.secondary)
             ForEach(sorted) { connection in
                 GridRow {
@@ -333,7 +333,7 @@ private struct OpenFilesSection: View {
                         .frame(minWidth: 28, alignment: .trailing)
                         .help("File descriptor")
                     Text(ScriptLabel.abbreviate(file.path))
-                        .font(.callout)
+                        .font(.calloutText)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .textSelection(.enabled)

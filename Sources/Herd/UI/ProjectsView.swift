@@ -92,7 +92,7 @@ private struct ProjectList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             Text(title)
-                .font(.headline)
+                .font(.headlineText)
             ForEach(summaries) { summary in
                 ProjectCard(summary: summary, ledger: ledger)
             }
@@ -108,7 +108,7 @@ struct ActivityGlyph: View {
     var body: some View {
         let state = appearance
         Image(systemName: state.symbol)
-            .font(.caption)
+            .font(.captionText)
             .foregroundStyle(state.tint)
             .frame(width: 16)
             .help(state.label)

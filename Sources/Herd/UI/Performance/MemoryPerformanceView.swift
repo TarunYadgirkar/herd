@@ -15,7 +15,7 @@ struct MemoryPerformanceView: View {
             range: context.range
         ) {
             Image(systemName: MemoryPressureCopy.symbol(system.pressure))
-                .font(.headline)
+                .font(.headlineText)
                 .foregroundStyle(Theme.pressureColor(system.pressure))
                 .accessibilityLabel("Memory pressure \(MemoryPressureCopy.title(system.pressure))")
         }
@@ -55,11 +55,11 @@ struct MemoryPerformanceView: View {
 
     private var stats: [PerformanceStat] {
         [
-            PerformanceStat(label: "App", value: Format.bytes(system.appMemory)),
-            PerformanceStat(label: "Wired", value: Format.bytes(system.wiredMemory), help: "Can't be freed"),
-            PerformanceStat(label: "Compressed", value: Format.bytes(system.compressedMemory)),
-            PerformanceStat(label: "Cached", value: Format.bytes(system.cachedFiles), help: "Freed first"),
-            PerformanceStat(label: "Swap", value: swapValue),
+            PerformanceStat(label: "App", value: Format.bytes(system.appMemory), swatch: ChartPalette.appMemory),
+            PerformanceStat(label: "Wired", value: Format.bytes(system.wiredMemory), help: "Can't be freed", swatch: ChartPalette.wiredMemory),
+            PerformanceStat(label: "Compressed", value: Format.bytes(system.compressedMemory), swatch: ChartPalette.compressedMemory),
+            PerformanceStat(label: "Cached", value: Format.bytes(system.cachedFiles), help: "Freed first", swatch: ChartPalette.cachedFiles),
+            PerformanceStat(label: "Swap", value: swapValue, swatch: ChartPalette.swap),
         ]
     }
 

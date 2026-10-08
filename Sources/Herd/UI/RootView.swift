@@ -130,7 +130,7 @@ struct ToastView: View {
     var body: some View {
         if let message {
             Text(message)
-                .font(.callout)
+                .font(.calloutText)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.regularMaterial, in: Capsule())

@@ -23,7 +23,7 @@ private enum TileKind: Int, Identifiable, Comparable {
         case .memory: 210
         case .gpu: 130
         case .network, .disk: 150
-        case .power: 120
+        case .power: 150
         }
     }
 
@@ -42,7 +42,8 @@ private struct PulseTiles: View {
     var body: some View {
         let kinds = prioritizedKinds
         TileRow(kinds: kinds.prefix(fittingCount(kinds)).sorted(), system: system, history: history)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .clipped()
             .onGeometryChange(for: CGFloat.self, of: { $0.size.width }, action: { width = $0 })
     }
 
@@ -91,13 +92,13 @@ private struct TileRow: View {
         case .gpu: GPUTile(utilization: system.gpuUtilization ?? 0, history: history.gpu)
         case .network:
             RateTile(
-                kind: .network, title: "Network",
+                kind: .network, title: "Network", quietCeiling: 102_400,
                 down: RateLine(name: "Download", rate: system.netInBps, series: history.netIn, color: Theme.netIn),
                 up: RateLine(name: "Upload", rate: system.netOutBps, series: history.netOut, color: Theme.netOut)
             )
         case .disk:
             RateTile(
-                kind: .disk, title: "Disk",
+                kind: .disk, title: "Disk", quietCeiling: 1_048_576,
                 down: RateLine(name: "Read", rate: system.diskReadBps, series: history.diskRead, color: Theme.netIn),
                 up: RateLine(name: "Write", rate: system.diskWriteBps, series: history.diskWrite, color: Theme.netOut)
             )
@@ -119,7 +120,7 @@ private struct Tile<Accessory: View, Content: View>: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: Theme.itemSpacing) {
                 Text(title)
-                    .font(.caption)
+                    .font(.captionText)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 accessory
@@ -130,7 +131,7 @@ private struct Tile<Accessory: View, Content: View>: View {
         .padding(.horizontal, Theme.innerPadding)
         .padding(.vertical, Theme.itemSpacing)
         .frame(minWidth: kind.idealWidth, idealWidth: kind.idealWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+        .surface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(summary)
     }
@@ -143,8 +144,7 @@ extension Tile where Accessory == EmptyView {
 }
 
 private enum Spark {
-    static let height: CGFloat = 28
-    static let minWidth: CGFloat = 36
+    static let height: CGFloat = 34
 }
 
 private struct CPUTile: View {
@@ -161,14 +161,15 @@ private struct CPUTile: View {
         ) {
             CoreStrip(usage: system.perCoreUsage)
         } content: {
-            HStack(spacing: Theme.itemSpacing) {
+            HStack(alignment: .bottom, spacing: Theme.groupSpacing) {
                 Text(percent)
                     .font(.display)
                     .foregroundStyle(system.cpuTotal > Self.hotThreshold ? Theme.hot : .primary)
                     .fixedSize()
-                Sparkline(values: history.values, ceiling: 1)
-                    .frame(minWidth: Spark.minWidth, maxWidth: .infinity)
+                Sparkline(values: history.values, ceiling: 1, fillsWidth: true)
+                    .frame(minWidth: 0, maxWidth: .infinity)
                     .frame(height: Spark.height)
+                    .clipped()
             }
         }
     }
@@ -201,7 +202,7 @@ private struct CoreBar: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Capsule().fill(.quaternary)
+            Capsule().fill(Theme.track)
             Capsule()
                 .fill(color)
                 .frame(height: max(width, height * usage))
@@ -222,13 +223,14 @@ private struct GPUTile: View {
     var body: some View {
         let percent = Format.percent(utilization * 100)
         Tile(title: "GPU", kind: .gpu, summary: "GPU, \(percent) busy") {
-            HStack(spacing: Theme.itemSpacing) {
+            HStack(alignment: .bottom, spacing: Theme.groupSpacing) {
                 Text(percent)
                     .font(.display)
                     .fixedSize()
-                Sparkline(values: history.values, ceiling: 1)
-                    .frame(minWidth: Spark.minWidth, maxWidth: .infinity)
+                Sparkline(values: history.values, ceiling: 1, fillsWidth: true)
+                    .frame(minWidth: 0, maxWidth: .infinity)
                     .frame(height: Spark.height)
+                    .clipped()
             }
         }
     }
@@ -244,7 +246,7 @@ private struct MemoryTile: View {
         Tile(title: "Memory", kind: .memory, summary: summary) {
             if system.pressure != .normal {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption)
+                    .font(.captionText)
                     .foregroundStyle(Theme.pressureColor(system.pressure))
             }
         } content: {
@@ -260,7 +262,7 @@ private struct MemoryTile: View {
 
     private var swapLabel: some View {
         HStack(spacing: 3) {
-            Image(systemName: "externaldrive.fill").font(.caption2)
+            Image(systemName: "externaldrive.fill").font(.footnoteText)
             Text(Format.bytes(system.swapUsed)).font(.metricSmall)
         }
         .foregroundStyle(isSwapHeavy ? Theme.warning : .secondary)
@@ -301,7 +303,7 @@ private struct MemorySegment: Identifiable {
 private struct MemoryBar: View {
     let system: SystemSnapshot
 
-    private static let height: CGFloat = 6
+    private static let height: CGFloat = 8
     private static let minWidth: CGFloat = 60
 
     var body: some View {
@@ -316,7 +318,7 @@ private struct MemoryBar: View {
         }
         .frame(minWidth: Self.minWidth, maxWidth: .infinity)
         .frame(height: Self.height)
-        .background(.quaternary)
+        .background(Theme.track)
         .clipShape(Capsule())
         .help(tooltip)
     }
@@ -350,6 +352,7 @@ private struct RateLine {
 private struct RateTile: View {
     let kind: TileKind
     let title: String
+    let quietCeiling: Double
     let down: RateLine
     let up: RateLine
 
@@ -358,30 +361,31 @@ private struct RateTile: View {
             title: title, kind: kind,
             summary: "\(title), \(down.name.lowercased()) \(Format.rate(down.rate)), \(up.name.lowercased()) \(Format.rate(up.rate))"
         ) {
-            HStack(spacing: Theme.itemSpacing) {
+            HStack(alignment: .bottom, spacing: Theme.groupSpacing) {
                 VStack(alignment: .leading, spacing: 2) {
                     rateText(down, symbol: "arrow.down")
                     rateText(up, symbol: "arrow.up")
                 }
                 .fixedSize()
                 ZStack {
-                    Sparkline(values: down.series.values, color: down.color, ceiling: sharedCeiling)
-                    Sparkline(values: up.series.values, color: up.color, ceiling: sharedCeiling)
+                    Sparkline(values: down.series.values, color: down.color, ceiling: sharedCeiling, fillsWidth: true)
+                    Sparkline(values: up.series.values, color: up.color, ceiling: sharedCeiling, fillsWidth: true)
                 }
-                .frame(minWidth: Spark.minWidth, maxWidth: .infinity)
+                .frame(minWidth: 0, maxWidth: .infinity)
                 .frame(height: Spark.height)
+                .clipped()
             }
         }
     }
 
-    private var sharedCeiling: Double { max(down.series.peak, up.series.peak) }
+    private var sharedCeiling: Double { max(down.series.peak, up.series.peak, quietCeiling) }
 
     private func rateText(_ line: RateLine, symbol: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: symbol)
-                .font(.caption.weight(.semibold))
+                .font(.calloutText.weight(.bold))
                 .foregroundStyle(line.color)
-            Text(Format.rate(line.rate)).font(.metric)
+            Text(Format.rate(line.rate)).font(.displaySmall)
         }
     }
 }
@@ -407,8 +411,9 @@ private struct PowerTile: View {
     private func batteryContent(_ battery: BatteryInfo) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: Self.symbol(for: battery))
-                .foregroundStyle(isLow(battery) ? Theme.critical : .secondary)
-            Text(Format.percent(battery.percent)).font(.displaySmall)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(glyphColor(battery))
+            Text(Format.percent(battery.percent)).font(.display)
             if let remaining = Self.remaining(battery) {
                 Text(remaining)
                     .font(.metricSmall)
@@ -420,6 +425,11 @@ private struct PowerTile: View {
 
     private func isLow(_ battery: BatteryInfo) -> Bool {
         !battery.isOnAC && battery.percent < Self.lowBattery
+    }
+
+    private func glyphColor(_ battery: BatteryInfo) -> Color {
+        if isLow(battery) { return Theme.critical }
+        return battery.isOnAC ? Theme.good : .secondary
     }
 
     private static func symbol(for battery: BatteryInfo) -> String {

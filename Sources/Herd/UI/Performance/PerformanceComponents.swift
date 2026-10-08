@@ -9,7 +9,7 @@ struct PerformanceCard<Accessory: View, Content: View>: View {
         VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
                 Text(title)
-                    .font(.headline)
+                    .font(.headlineText)
                 Spacer(minLength: Theme.groupSpacing)
                 accessory
             }
@@ -17,7 +17,7 @@ struct PerformanceCard<Accessory: View, Content: View>: View {
         }
         .padding(Theme.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quinary, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+        .surface()
     }
 }
 
@@ -66,7 +66,7 @@ struct ChartLegend: View {
                 HStack(spacing: 5) {
                     Swatch(color: item.color)
                     Text(item.name)
-                        .font(.caption)
+                        .font(.captionText)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -91,7 +91,7 @@ struct ChartMessage: View {
 
     var body: some View {
         Text(text)
-            .font(.callout)
+            .font(.calloutText)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
@@ -125,14 +125,14 @@ struct ChartCallout: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(time)
-                .font(.caption2.monospacedDigit())
+                .font(.footnoteText.monospacedDigit())
                 .foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: Theme.itemSpacing, verticalSpacing: 2) {
                 ForEach(rows) { row in
                     GridRow {
                         HStack(spacing: 5) {
                             Swatch(color: row.color)
-                            Text(row.name).font(.caption).fixedSize()
+                            Text(row.name).font(.captionText).fixedSize()
                         }
                         Text(row.value)
                             .font(.metricSmall)
@@ -147,7 +147,7 @@ struct ChartCallout: View {
                             HStack(spacing: 5) {
                                 UsageIcon(bundlePath: app.bundlePath, size: Self.appIconSize)
                                 Text(app.name)
-                                    .font(.caption)
+                                    .font(.captionText)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                     .frame(maxWidth: Self.appNameWidth, alignment: .leading)
@@ -172,6 +172,7 @@ struct PerformanceStat: Identifiable {
     var help: String?
     var level: Double?
     var tint: Color?
+    var swatch: Color?
 
     var id: String { label }
 }
@@ -189,9 +190,12 @@ struct StatGrid: View {
         ) {
             ForEach(stats) { stat in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(stat.label)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 5) {
+                        if let swatch = stat.swatch { Swatch(color: swatch) }
+                        Text(stat.label)
+                            .font(.captionText)
+                            .foregroundStyle(.secondary)
+                    }
                     HStack(spacing: 5) {
                         if let level = stat.level {
                             LevelRing(level: level, color: stat.tint ?? Theme.accent)
@@ -227,7 +231,7 @@ struct PerformanceHeader<Badge: View>: View {
         VStack(alignment: .leading, spacing: Theme.itemSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
                 Text(title)
-                    .font(.title2.weight(.semibold))
+                    .font(.sectionTitle)
                 badge
                 Spacer(minLength: Theme.groupSpacing)
                 RangePicker(range: range)
@@ -248,7 +252,7 @@ struct PerformanceHeader<Badge: View>: View {
                     .font(.display)
                     if let caption {
                         caption
-                            .font(.caption.monospacedDigit())
+                            .font(.captionText.monospacedDigit())
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -318,7 +322,7 @@ struct LevelRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(.quaternary, lineWidth: Self.lineWidth)
+            Circle().stroke(Theme.track, lineWidth: Self.lineWidth)
             Circle()
                 .trim(from: 0, to: min(max(level, 0), 1))
                 .stroke(color, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))

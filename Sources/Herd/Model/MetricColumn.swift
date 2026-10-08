@@ -51,23 +51,35 @@ enum MetricColumn: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    // Thresholds where a cell starts to look warm and where it is fully hot.
+    // Where a cell starts to tint and where the tint is at full strength.
     var heatRange: ClosedRange<Double> {
         switch self {
-        case .cpu: 10...150
-        case .memory: 500_000_000...4_000_000_000
-        case .impact: 10...150
-        case .energy: 0.5...8
-        case .gpu: 5...60
-        case .network: 100_000...20_000_000
-        case .disk: 1_000_000...100_000_000
+        case .cpu: 2...150
+        case .memory: 100_000_000...4_000_000_000
+        case .impact: 2...150
+        case .energy: 0.05...8
+        case .gpu: 2...60
+        case .network: 10_000...20_000_000
+        case .disk: 100_000...100_000_000
         }
     }
 
+    var trendFloor: Double {
+        switch self {
+        case .cpu, .impact: 20
+        case .memory: 1_000_000_000
+        case .energy: 1
+        case .gpu: 10
+        case .network: 200_000
+        case .disk: 2_000_000
+        }
+    }
+
+    // Usage spans orders of magnitude, so the ramp is logarithmic; a linear one leaves all but the top rows blank.
     func heat(_ value: Double) -> Double {
         let range = heatRange
         guard value > range.lowerBound else { return 0 }
-        return min((value - range.lowerBound) / (range.upperBound - range.lowerBound), 1)
+        return min(log(value / range.lowerBound) / log(range.upperBound / range.lowerBound), 1)
     }
 }
 

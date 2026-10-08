@@ -79,12 +79,12 @@ private struct ClusterRow: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
-            Text(cluster.name).font(.headline)
+            Text(cluster.name).font(.headlineText)
             Text("\(usage.count)")
                 .font(.metricSmall)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
-                .background(.quaternary, in: Capsule())
+                .background(Theme.surfaceRaised, in: Capsule())
                 .accessibilityLabel("\(usage.count) cores")
             Spacer(minLength: Theme.groupSpacing)
             Text(Format.percent(average * 100))
@@ -120,7 +120,7 @@ private struct CoreBars: View {
             ForEach(usage.indices, id: \.self) { index in
                 VStack(spacing: 4) {
                     ZStack(alignment: .bottom) {
-                        RoundedRectangle(cornerRadius: Self.barRadius, style: .continuous).fill(.quaternary)
+                        RoundedRectangle(cornerRadius: Self.barRadius, style: .continuous).fill(Theme.track)
                         RoundedRectangle(cornerRadius: Self.barRadius, style: .continuous)
                             .fill(CoreLoad.color(usage[index]))
                             .frame(height: max(Self.barRadius * 2, Self.barHeight * usage[index]))
