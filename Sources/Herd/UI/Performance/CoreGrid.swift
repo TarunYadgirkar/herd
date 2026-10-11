@@ -89,7 +89,7 @@ private struct ClusterRow: View {
             Spacer(minLength: Theme.groupSpacing)
             Text(Format.percent(average * 100))
                 .font(.displaySmall)
-                .foregroundStyle(average < CoreLoad.calmCeiling ? .primary : CoreLoad.color(average))
+                .foregroundStyle(average < CoreLoad.calmCeiling ? .primary : CoreLoad.textColor(average))
                 .accessibilityLabel("\(cluster.name) average \(Format.percent(average * 100))")
             if let frequency {
                 Label(PerformanceFormat.gigahertz(frequency), systemImage: "speedometer")
@@ -100,7 +100,7 @@ private struct ClusterRow: View {
             if let celsius {
                 Label(PerformanceFormat.celsius(celsius), systemImage: "thermometer.medium")
                     .font(.metric)
-                    .foregroundStyle(HeatScale.color(for: celsius, zone: .superCores) ?? .secondary)
+                    .foregroundStyle(HeatScale.textColor(for: celsius, zone: .superCores) ?? .secondary)
                     .accessibilityLabel("Hottest sensor \(PerformanceFormat.celsius(celsius))")
             }
         }
@@ -151,5 +151,9 @@ enum CoreLoad {
         if usage >= hotFloor { return Theme.hot }
         if usage >= calmCeiling { return Theme.warm }
         return Theme.accent
+    }
+
+    static func textColor(_ usage: Double) -> Color {
+        usage >= hotFloor ? Theme.hotText : Theme.warmText
     }
 }

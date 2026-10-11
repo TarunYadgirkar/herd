@@ -15,6 +15,10 @@ enum Palette {
     static let fern = ColorPair(light: 0x337344, dark: 0x6FC082)
     static let amber = ColorPair(light: 0x955816, dark: 0xEAA950)
     static let brick = ColorPair(light: 0xAF342F, dark: 0xEA6A64)
+
+    // Ochre and ember are tuned as fills; as text they fall under 4.5:1, so readings drawn in heat colors use these.
+    static let ochreText = ColorPair(light: 0x7A5416, dark: 0xE8B76A)
+    static let emberText = ColorPair(light: 0x9F3812, dark: 0xFF9670)
 }
 
 extension NSColor {
@@ -46,6 +50,8 @@ enum Theme {
     static let neutral = Color(Palette.stone)
     static let warm = Color(Palette.ochre)
     static let hot = Color(Palette.ember)
+    static let warmText = Color(Palette.ochreText)
+    static let hotText = Color(Palette.emberText)
 
     static let good = Color(Palette.fern)
     static let warning = Color(Palette.amber)
@@ -67,13 +73,14 @@ enum Theme {
 
     static let cellRadius: CGFloat = 4
     static let heatFillOpacity = 0.4
+    static let heatFillOpacityIncreased = 0.55
 
     static func heatColor(_ heat: Double) -> Color {
         warm.mix(with: hot, by: heat)
     }
 
-    static func heatFill(_ heat: Double) -> Color {
-        heatColor(heat).opacity(heatFillOpacity * heat)
+    static func heatFill(_ heat: Double, contrast: ColorSchemeContrast = .standard) -> Color {
+        heatColor(heat).opacity((contrast == .increased ? heatFillOpacityIncreased : heatFillOpacity) * heat)
     }
 
     static func pressureColor(_ pressure: MemoryPressure) -> Color {

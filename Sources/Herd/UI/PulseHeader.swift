@@ -164,7 +164,7 @@ private struct CPUTile: View {
             HStack(alignment: .bottom, spacing: Theme.groupSpacing) {
                 Text(percent)
                     .font(.display)
-                    .foregroundStyle(system.cpuTotal > Self.hotThreshold ? Theme.hot : .primary)
+                    .foregroundStyle(system.cpuTotal > Self.hotThreshold ? Theme.hotText : .primary)
                     .fixedSize()
                 Sparkline(values: history.values, ceiling: 1, fillsWidth: true)
                     .frame(minWidth: 0, maxWidth: .infinity)

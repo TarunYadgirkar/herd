@@ -46,6 +46,7 @@ struct GroupIcon: View {
         if let image = IconProvider.icon(for: group, size: size) {
             Image(nsImage: image)
                 .frame(width: size, height: size)
+                .accessibilityHidden(true)
         } else {
             FallbackIcon(symbol: fallbackSymbol, size: size)
         }
@@ -118,20 +119,29 @@ struct HeatValue: View, Equatable {
     let value: Double
     var isApproximate = false
 
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+
+    private static let highHeat = 0.66
+
     nonisolated static func == (lhs: HeatValue, rhs: HeatValue) -> Bool {
         lhs.column == rhs.column && lhs.isApproximate == rhs.isApproximate && lhs.column.displayed(lhs.value) == rhs.column.displayed(rhs.value)
     }
 
     var body: some View {
+        let heat = column.heat(value)
+        let isHigh = heat >= Self.highHeat
         Text((isApproximate ? "≈ " : "") + column.format(value))
             .font(.metric)
+            .fontWeight(differentiateWithoutColor && isHigh ? .semibold : nil)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
-                Theme.heatFill(column.heat(value)),
+                Theme.heatFill(heat, contrast: contrast),
                 in: RoundedRectangle(cornerRadius: Theme.cellRadius, style: .continuous)
             )
+            .accessibilityValue(isHigh ? "High" : "")
     }
 }
 

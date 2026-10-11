@@ -9,8 +9,7 @@ struct SensorsPerformanceView: View {
                 title: "Sensors",
                 value: sensors.cpuCelsius.map(PerformanceFormat.celsius) ?? PerformanceFormat.missing,
                 caption: Text("CPU"),
-                stats: stats(sensors),
-                range: context.range
+                stats: stats(sensors)
             ) {
                 ThermalBadge(thermal: context.system.thermal)
             }
@@ -103,6 +102,13 @@ enum HeatScale {
         return nil
     }
 
+    static func textColor(for celsius: Double, zone: SensorZone) -> Color? {
+        let limits = thresholds(zone)
+        if celsius >= limits.hot { return Theme.hotText }
+        if celsius >= limits.warm { return Theme.warmText }
+        return nil
+    }
+
     private static func thresholds(_ zone: SensorZone) -> (warm: Double, hot: Double) {
         switch zone {
         case .surface: (38, 45)
@@ -148,7 +154,7 @@ private struct ZoneRow: View {
                 if let hottest {
                     Text(PerformanceFormat.celsius(hottest))
                         .font(.displaySmall)
-                        .foregroundStyle(HeatScale.color(for: hottest, zone: zone) ?? .primary)
+                        .foregroundStyle(HeatScale.textColor(for: hottest, zone: zone) ?? .primary)
                 }
             }
             .frame(width: Self.titleWidth, alignment: .leading)
@@ -191,7 +197,7 @@ private struct HeatCells: View {
                 let tint = HeatScale.color(for: reading.celsius, zone: zone)
                 Text(String(format: "%.0f°", reading.celsius))
                     .font(.metricSmall)
-                    .foregroundStyle(tint ?? .primary)
+                    .foregroundStyle(HeatScale.textColor(for: reading.celsius, zone: zone) ?? .primary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
                     .background((tint ?? Color.secondary).opacity(tint == nil ? 0.10 : 0.18), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
@@ -247,7 +253,7 @@ private struct NamedReadings: View {
                     Spacer(minLength: Theme.itemSpacing)
                     Text(PerformanceFormat.celsius(reading.celsius))
                         .font(.metric)
-                        .foregroundStyle(HeatScale.color(for: reading.celsius, zone: zone) ?? .primary)
+                        .foregroundStyle(HeatScale.textColor(for: reading.celsius, zone: zone) ?? .primary)
                 }
                 .help(reading.key)
                 .accessibilityElement(children: .combine)
