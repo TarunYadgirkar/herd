@@ -287,7 +287,6 @@ private struct InfoActions: View {
             Label("Efficiency", systemImage: "leaf")
         }
         .toggleStyle(.button)
-        .tint(Theme.accent)
         .help(canChangePriority ? "Efficiency cores, low disk priority" : "Your own processes only")
     }
 }

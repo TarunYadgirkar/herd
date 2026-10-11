@@ -365,7 +365,6 @@ private struct ActionsRow: View {
         if group.isSuspended {
             button(.resume)
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
         } else {
             button(.suspend)
                 .buttonStyle(.bordered)

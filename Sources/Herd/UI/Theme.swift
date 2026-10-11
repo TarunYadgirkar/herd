@@ -107,8 +107,10 @@ extension Font {
 }
 
 extension View {
+    // Controls take the AccentColor asset (or the person's own accent) rather than Theme.accent,
+    // whose dark variant is too light to carry white labels.
     func herdStyle() -> some View {
-        font(.bodyText).tint(Theme.accent)
+        font(.bodyText)
     }
 
     func surface(cornerRadius: CGFloat = Theme.cornerRadius) -> some View {

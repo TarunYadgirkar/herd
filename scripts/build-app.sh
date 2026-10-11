@@ -14,6 +14,8 @@ cp "$BIN" "$APP/Contents/MacOS/Herd"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
+xcrun actool Resources/Assets.xcassets --compile "$APP/Contents/Resources" \
+  --platform macosx --minimum-deployment-target 15.0 --output-format human-readable-text >/dev/null
 codesign --force --sign - "$APP" >/dev/null
 echo "$APP"
 
