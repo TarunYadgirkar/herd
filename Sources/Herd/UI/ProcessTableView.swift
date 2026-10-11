@@ -27,8 +27,8 @@ struct ProcessTableView: View, Equatable {
             && lhs.isTree == rhs.isTree
     }
 
-    // The height automatic sizing settled on, so switching it off leaves the table looking the same.
-    private static let rowHeight: CGFloat = 30
+    // Automatic sizing is switched off below, so this has to fit one line of table text plus the heat cell's inset.
+    private static let rowHeight: CGFloat = 26
 
     @AppStorage("processTableColumns") private var columnStorage = Data()
     @State private var columnCustomization = TableColumnCustomization<TableRowItem>()
@@ -215,7 +215,7 @@ private struct NameCell: View, Equatable {
                     .layoutPriority(1)
                 if let subtitle = row.subtitle {
                     Text(subtitle)
-                        .font(.calloutText)
+                        .font(.captionText)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.head)
@@ -252,7 +252,9 @@ private struct NameCell: View, Equatable {
                     .accessibilityLabel("\(row.count) processes")
             }
         }
+        .font(.calloutText)
         .help(row.process?.sample.path ?? row.group.bundlePath ?? row.title)
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -264,11 +266,13 @@ private struct NameCell: View, Equatable {
             Image(systemName: "square.stack")
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
+                .accessibilityHidden(true)
         case .process:
             Image(systemName: "circle.fill")
                 .font(.system(size: 5))
                 .foregroundStyle(.tertiary)
                 .frame(width: 18)
+                .accessibilityHidden(true)
         }
     }
 }
