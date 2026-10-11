@@ -95,7 +95,7 @@ struct ProcessTableView: View, Equatable {
         TableColumn("Name", value: \.sortTitle) { row in
             NameCell(row: row).equatable()
         }
-        .width(min: 220, ideal: 300)
+        .width(min: 220, ideal: 260)
         .customizationID("name")
         .disabledCustomizationBehavior(.visibility)
 
