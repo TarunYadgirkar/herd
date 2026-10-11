@@ -214,6 +214,7 @@ struct StatGrid: View {
     }
 }
 
+// The page name lives in the toolbar title, so the header opens on the reading itself; the title only labels it for VoiceOver.
 struct PerformanceHeader<Badge: View>: View {
     let title: String
     let value: String
@@ -222,46 +223,42 @@ struct PerformanceHeader<Badge: View>: View {
     var symbolLabel: String?
     var caption: Text?
     let stats: [PerformanceStat]
-    let range: Binding<HistoryRange>
     @ViewBuilder let badge: Badge
 
     private static var headlineWidth: CGFloat { 180 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.itemSpacing) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
-                Text(title)
-                    .font(.sectionTitle)
-                badge
-                Spacer(minLength: Theme.groupSpacing)
-                RangePicker(range: range)
-            }
-            HStack(alignment: .top, spacing: Theme.groupSpacing) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        if let symbol {
-                            Image(systemName: symbol)
-                                .foregroundStyle(symbolTint)
-                                .accessibilityLabel(symbolLabel ?? "")
-                                .accessibilityHidden(symbolLabel == nil)
-                        }
-                        Text(value)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+        HStack(alignment: .top, spacing: Theme.groupSpacing) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if let symbol {
+                        Image(systemName: symbol)
+                            .foregroundStyle(symbolTint)
+                            .accessibilityLabel(symbolLabel ?? "")
+                            .accessibilityHidden(symbolLabel == nil)
                     }
-                    .font(.display)
-                    if let caption {
-                        caption
-                            .font(.captionText.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Text(value)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    badge
                 }
-                .frame(minWidth: Self.headlineWidth, alignment: .leading)
-                .accessibilityElement(children: .combine)
-                StatGrid(stats: stats)
+                .font(.display)
+                if let caption {
+                    caption
+                        .font(.captionText.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .frame(minWidth: Self.headlineWidth, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel { label in
+                Text(title)
+                label
+            }
+            StatGrid(stats: stats)
         }
+        .padding(.top, 4)
     }
 }
 
@@ -273,12 +270,11 @@ extension PerformanceHeader where Badge == EmptyView {
         symbolTint: Color = .secondary,
         symbolLabel: String? = nil,
         caption: Text? = nil,
-        stats: [PerformanceStat],
-        range: Binding<HistoryRange>
+        stats: [PerformanceStat]
     ) {
         self.init(
             title: title, value: value, symbol: symbol, symbolTint: symbolTint, symbolLabel: symbolLabel,
-            caption: caption, stats: stats, range: range, badge: { EmptyView() }
+            caption: caption, stats: stats, badge: { EmptyView() }
         )
     }
 }

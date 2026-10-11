@@ -12,8 +12,7 @@ struct EnergyPerformanceView: View {
                 title: "Energy",
                 value: Format.watts(power.systemWatts ?? power.packageWatts),
                 caption: Text(power.systemWatts == nil ? "Chip" : "Whole Mac"),
-                stats: stats(power),
-                range: context.range
+                stats: stats(power)
             )
             PerformanceChart(
                 title: "Power use",

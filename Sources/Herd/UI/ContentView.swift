@@ -66,7 +66,8 @@ struct ContentView: View {
         }
         .searchable(text: $query, placement: .toolbar)
         .toolbar { toolbar }
-        .navigationTitle("Herd")
+        .navigationTitle("Processes")
+        .navigationSubtitle(countSummary)
         .onChange(of: sortOrder) { _, _ in hold.release() }
         .onChange(of: store.requestedSelection, initial: true) { _, requested in
             guard let requested else { return }
@@ -95,22 +96,28 @@ struct ContentView: View {
                 Label("Show as Tree", systemImage: "list.bullet.indent")
             }
             .keyboardShortcut("t", modifiers: .command)
-            .help("Tree (⌘T)")
+            .help("Show processes as a parent and child tree (⌘T)")
 
             Button {
                 store.isPaused.toggle()
             } label: {
                 Label(store.isPaused ? "Resume Updates" : "Pause Updates", systemImage: store.isPaused ? "play.fill" : "pause.fill")
             }
-            .help(store.isPaused ? "Resume" : "Pause")
+            .help(store.isPaused ? "Resume live updates" : "Freeze the numbers so you can read them")
 
             Button {
                 showInspector.toggle()
             } label: {
-                Label("Details", systemImage: "sidebar.right")
+                Label("Show Details", systemImage: "sidebar.right")
             }
-            .help("Details")
+            .help("Show details for the selected row")
         }
+    }
+
+    private var countSummary: String {
+        let groups = store.groups.filter { scope.includes($0.kind) }
+        let processes = groups.reduce(0) { $0 + $1.processes.count }
+        return "\(processes) processes in \(groups.count) groups"
     }
 
     // Reading groups on every pass keeps this view subscribed to new frames even when the cached rows are reused.

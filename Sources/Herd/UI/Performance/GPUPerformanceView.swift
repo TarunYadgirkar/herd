@@ -10,8 +10,7 @@ struct GPUPerformanceView: View {
             PerformanceHeader(
                 title: "GPU",
                 value: Format.percent(utilization * 100),
-                stats: stats,
-                range: context.range
+                stats: stats
             )
             PerformanceChart(
                 title: "GPU usage",

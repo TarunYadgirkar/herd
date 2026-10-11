@@ -10,8 +10,7 @@ struct CPUPerformanceView: View {
         PerformanceHeader(
             title: "CPU",
             value: Format.percent(system.cpuTotal * 100),
-            stats: stats,
-            range: context.range
+            stats: stats
         )
         PerformanceChart(
             title: "CPU usage",

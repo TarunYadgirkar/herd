@@ -64,8 +64,7 @@ struct ThroughputPerformanceView: View {
             symbolTint: ChartPalette.download,
             symbolLabel: kind.inName,
             caption: Text("\(Image(systemName: "arrow.up")) \(Format.rate(live.out))").foregroundStyle(ChartPalette.upload),
-            stats: stats,
-            range: context.range
+            stats: stats
         )
         PerformanceChart(
             title: "Throughput",

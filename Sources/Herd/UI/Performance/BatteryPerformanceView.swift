@@ -14,8 +14,7 @@ struct BatteryPerformanceView: View {
                 symbolTint: BatteryGlyph.tint(percent: percent, isCharging: isCharging, isOnAC: isOnAC),
                 symbolLabel: status,
                 caption: remaining.map { Text($0) },
-                stats: headlineStats,
-                range: context.range
+                stats: headlineStats
             )
             PerformanceChart(
                 title: "Charge",

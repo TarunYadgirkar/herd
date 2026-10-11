@@ -6,29 +6,16 @@ struct AppHistoryView: View {
 
     var body: some View {
         let usage = store.archive.appUsageToday
-        VStack(alignment: .leading, spacing: 0) {
-            header(usage)
-                .padding(.horizontal, Theme.groupSpacing)
-                .padding(.vertical, Theme.itemSpacing + 4)
-            Divider()
+        let total = usage.reduce(0) { $0 + $1.energyWattHours }
+        Group {
             if usage.isEmpty {
                 SectionMessage(title: "No history yet", symbol: "clock.arrow.circlepath")
-                .frame(maxHeight: .infinity)
+                    .frame(maxHeight: .infinity)
             } else {
                 AppUsageTable(rows: usage.sorted(using: sortOrder), sortOrder: $sortOrder)
             }
         }
-    }
-
-    private func header(_ usage: [AppUsage]) -> some View {
-        let total = usage.reduce(0) { $0 + $1.energyWattHours }
-        return HStack(alignment: .firstTextBaseline, spacing: Theme.itemSpacing) {
-            Text("App history").font(.sectionTitle)
-            Spacer(minLength: Theme.groupSpacing)
-            Text("\(PerformanceFormat.wattHours(total)) today")
-                .font(.displaySmall)
-        }
-        .accessibilityElement(children: .combine)
+        .navigationSubtitle("\(PerformanceFormat.wattHours(total)) used today")
     }
 }
 

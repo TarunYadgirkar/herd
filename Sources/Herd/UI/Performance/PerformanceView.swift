@@ -15,6 +15,9 @@ struct PerformanceView: View {
             .padding(Theme.groupSpacing)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) { RangePicker(range: $range) }
+        }
         .onChange(of: section) { selection = nil }
         .onChange(of: range) { selection = nil }
     }

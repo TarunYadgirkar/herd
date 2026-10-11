@@ -11,8 +11,7 @@ struct MemoryPerformanceView: View {
             title: "Memory",
             value: Format.bytes(system.memoryUsed),
             caption: Text("of \(PerformanceFormat.gigabytes(system.memoryTotal, decimals: 0)) GB"),
-            stats: stats,
-            range: context.range
+            stats: stats
         ) {
             Image(systemName: MemoryPressureCopy.symbol(system.pressure))
                 .font(.headlineText)
