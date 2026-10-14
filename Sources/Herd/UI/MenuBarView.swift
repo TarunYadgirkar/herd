@@ -156,6 +156,7 @@ struct MenuBarView: View {
         .frame(width: Self.width)
         .animation(.easeOut(duration: 0.2), value: actions.toast)
         .background(WindowVisibilityReader { store.setSurface("menu", visible: $0) })
+        .background(MenuBarPanel.Reader())
     }
 
     @ViewBuilder
@@ -192,6 +193,7 @@ struct MenuBarView: View {
     }
 
     private func openMain() {
+        MenuBarPanel.dismiss()
         openWindow(id: "main")
         NSApp.activate()
     }
@@ -224,8 +226,35 @@ private enum ConfirmAlert {
         alert.informativeText = pending.message
         alert.addButton(withTitle: action.title).hasDestructiveAction = action.isDestructive
         alert.addButton(withTitle: "Cancel")
+        MenuBarPanel.dismiss()
         NSApp.activate()
         return alert.runModal() == .alertFirstButtonReturn
+    }
+}
+
+// MenuBarExtra has no API to close its panel, and opening another window only covers it: the panel stays up behind the
+// window, the menu bar item still counts it as open, and the next click on the item closes it unseen, so nothing appears.
+// Escape is the panel's own way out, so dismissing sends the same cancel action and the item's state stays in step.
+@MainActor
+private enum MenuBarPanel {
+    private static weak var window: NSWindow?
+
+    static func dismiss() {
+        guard let window, window.isVisible else { return }
+        let responder = window.firstResponder ?? window
+        responder.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil)
+    }
+
+    struct Reader: NSViewRepresentable {
+        func makeNSView(context: Context) -> ReaderView { ReaderView() }
+        func updateNSView(_ nsView: ReaderView, context: Context) {}
+    }
+
+    final class ReaderView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { MenuBarPanel.window = window }
+        }
     }
 }
 
@@ -426,6 +455,7 @@ private struct FeedbackLine: View {
 
 private struct MenuBarFooter: View {
     let openMain: () -> Void
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         HStack(spacing: Theme.itemSpacing) {
@@ -433,13 +463,16 @@ private struct MenuBarFooter: View {
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.accent)
             Spacer()
-            SettingsLink {
+            Button {
+                MenuBarPanel.dismiss()
+                openSettings()
+                NSApp.activate()
+            } label: {
                 Image(systemName: "gearshape")
                     .frame(width: 20, height: 20)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .simultaneousGesture(TapGesture().onEnded { NSApp.activate() })
             .help("Settings")
             .accessibilityLabel("Settings")
             Button("Quit") { NSApp.terminate(nil) }
