@@ -21,20 +21,41 @@ actor SamplingEngine {
     private var lastTickUptime: UInt64?
     private var tickCount = 0
     private var awake: [pid_t: [String]] = [:]
+    private var isStarted = false
+    private var isDetailVisible = false
+    private var effort: SamplingEffort = .precise
     // Sleep assertions change rarely and IOPMCopyAssertionsByProcess is the costliest per-tick call, so it refreshes every few ticks.
     private static let assertionRefreshTicks = 5
 
-    func start() {
-        networkSampler.start()
+    func start(effort: SamplingEffort) {
+        isStarted = true
+        self.effort = effort
+        updateNetworkTracking()
     }
 
     func stop() {
+        isStarted = false
         networkSampler.stop()
         processSampler.setDetailVisible(false)
     }
 
     func setDetailVisible(_ isVisible: Bool) {
+        isDetailVisible = isVisible
         processSampler.setDetailVisible(isVisible)
+        updateNetworkTracking()
+    }
+
+    func setEffort(_ effort: SamplingEffort) {
+        self.effort = effort
+        updateNetworkTracking()
+    }
+
+    private func updateNetworkTracking() {
+        if isStarted && (effort.tracksNetworkWhileHidden || isDetailVisible) {
+            networkSampler.start()
+        } else {
+            networkSampler.stop()
+        }
     }
 
     func tick(regularAppPids: Set<pid_t>) -> Frame {

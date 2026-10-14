@@ -20,7 +20,6 @@ enum UpdateInterval: Double, CaseIterable, Identifiable {
 @MainActor
 @Observable
 final class MonitorStore {
-    static let intervalKey = "updateInterval"
     private static let warmUpDelay = Duration.milliseconds(700)
     private static let historySaveInterval: TimeInterval = 300
     private static let timerTolerance = 0.1
@@ -47,14 +46,23 @@ final class MonitorStore {
 
     var isPaused = false
     var requestedSelection: String?
-    var interval: UpdateInterval {
-        didSet { UserDefaults.standard.set(interval.rawValue, forKey: Self.intervalKey) }
+    var powerMode: PowerMode {
+        didSet {
+            UserDefaults.standard.set(powerMode.rawValue, forKey: PowerMode.key)
+            updateEffort()
+        }
     }
+    private(set) var effort: SamplingEffort
+    var interval: UpdateInterval { effort.interval }
 
     @ObservationIgnored private let engine = SamplingEngine()
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var regularAppPids: Set<pid_t>?
     @ObservationIgnored private var visibleSurfaces: Set<String> = []
+    // Windows keep reporting themselves visible behind the lock screen, so a locked or sleeping display counts as nobody looking.
+    @ObservationIgnored private var isScreenAway = false
+    @ObservationIgnored private var screenObservers: [NSObjectProtocol] = []
+    private var isDetailVisible: Bool { !visibleSurfaces.isEmpty && !isScreenAway }
     @ObservationIgnored private var latestFrame: Frame?
     @ObservationIgnored private var latestGroupHistory: [String: GroupHistory] = [:]
     @ObservationIgnored private var latestSystemHistory = SystemHistory()
@@ -62,21 +70,25 @@ final class MonitorStore {
     @ObservationIgnored private var lastHistorySave = Date()
 
     init() {
-        let saved = UserDefaults.standard.double(forKey: Self.intervalKey)
-        interval = UpdateInterval(rawValue: saved) ?? .normal
+        let mode = UserDefaults.standard.string(forKey: PowerMode.key).flatMap(PowerMode.init) ?? .automatic
+        powerMode = mode
+        effort = mode.effort(onBattery: PowerSource.isOnBattery, lowPowerMode: PowerSource.isLowPowerMode)
     }
 
     func start() {
         guard loop == nil else { return }
         observeWorkspace()
+        observeScreen()
         // Utility priority steers sampling off the fastest cores; the tolerance lets macOS coalesce
         // Herd's wakeups with other timers, which Apple's energy guide asks for (at least 10%).
         loop = Task(priority: .utility) { [weak self] in
-            await self?.engine.start()
+            guard let effort = self?.effort else { return }
+            await self?.engine.start(effort: effort)
             await self?.refresh(force: true)
             try? await Task.sleep(for: Self.warmUpDelay)
             while !Task.isCancelled, let self {
                 await self.refresh()
+                self.updateEffort()
                 let interval = Duration.seconds(self.interval.rawValue)
                 try? await Task.sleep(for: interval, tolerance: interval * Self.timerTolerance)
             }
@@ -87,6 +99,14 @@ final class MonitorStore {
         loop?.cancel()
         loop = nil
         Task { await engine.stop() }
+    }
+
+    // Checked once per tick: unplugging or turning on Low Power Mode switches Automatic to Efficient by the next sample.
+    private func updateEffort() {
+        let next = powerMode.effort(onBattery: PowerSource.isOnBattery, lowPowerMode: PowerSource.isLowPowerMode)
+        guard next != effort else { return }
+        effort = next
+        Task { await engine.setEffort(next) }
     }
 
     func saveHistory() {
@@ -148,16 +168,35 @@ final class MonitorStore {
 
     // Re-rendering the app table is the most expensive thing Herd does, so per-app data is only published while someone can see it.
     func setSurface(_ name: String, visible: Bool) {
-        let wasVisible = !visibleSurfaces.isEmpty
-        if visible {
-            visibleSurfaces.insert(name)
-            publishDetail()
-        } else {
-            visibleSurfaces.remove(name)
+        updateVisibility {
+            if visible { visibleSurfaces.insert(name) } else { visibleSurfaces.remove(name) }
         }
-        let isVisible = !visibleSurfaces.isEmpty
+    }
+
+    private func updateVisibility(_ change: () -> Void) {
+        let wasVisible = isDetailVisible
+        change()
+        let isVisible = isDetailVisible
         guard isVisible != wasVisible else { return }
+        if isVisible { publishDetail() }
         Task { await engine.setDetailVisible(isVisible) }
+    }
+
+    private func observeScreen() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        let distributed = DistributedNotificationCenter.default()
+        let away: [(NotificationCenter, Notification.Name, Bool)] = [
+            (workspace, NSWorkspace.screensDidSleepNotification, true),
+            (workspace, NSWorkspace.screensDidWakeNotification, false),
+            (distributed, Notification.Name("com.apple.screenIsLocked"), true),
+            (distributed, Notification.Name("com.apple.screenIsUnlocked"), false),
+        ]
+        isScreenAway = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+        screenObservers = away.map { center, name, isAway in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateVisibility { self?.isScreenAway = isAway } }
+            }
+        }
     }
 
     // Forced frames cover a shorter window than the update interval, so they'd skew the evenly spaced history.
@@ -175,7 +214,7 @@ final class MonitorStore {
         dockGraph.update(cpu: frame.system.cpuTotal)
         let nextHeadline = Headline(cpu: frame.system.cpuTotal, memoryUsed: frame.system.memoryUsed)
         if nextHeadline != headline { headline = nextHeadline }
-        if !visibleSurfaces.isEmpty { publishDetail() }
+        if isDetailVisible { publishDetail() }
         hasFirstFrame = true
     }
 

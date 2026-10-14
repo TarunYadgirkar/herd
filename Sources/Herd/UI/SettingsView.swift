@@ -20,8 +20,10 @@ struct SettingsView: View {
         @Bindable var store = store
         Form {
             Section("General") {
-                Picker("Update every", selection: $store.interval) {
-                    ForEach(UpdateInterval.allCases) { Text($0.title).tag($0) }
+                Picker(selection: $store.powerMode) {
+                    ForEach(PowerMode.allCases) { Text($0.title).tag($0) }
+                } label: {
+                    PowerModeLabel(effort: store.effort, mode: store.powerMode)
                 }
                 Toggle("Open details on select", isOn: $autoOpenInspector)
                 Toggle("CPU graph in Dock", isOn: $dockGraph)
@@ -63,7 +65,7 @@ struct SettingsView: View {
 private struct NotificationStatusRow: View {
     let status: UNAuthorizationStatus?
 
-    private static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+    private static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=com.tarunyadgirkar.herd")
 
     var body: some View {
         LabeledContent("Notifications") {
@@ -175,5 +177,23 @@ private struct RootHelperRow: View {
             failure = "Couldn't turn off: \(error.localizedDescription)"
         }
         state = RootHelper.shared.state
+    }
+}
+
+// Automatic hides which mode is running, so the label carries the live one: a scope for Precise, a leaf for Efficient.
+private struct PowerModeLabel: View {
+    let effort: SamplingEffort
+    let mode: PowerMode
+
+    var body: some View {
+        HStack(spacing: Theme.itemSpacing) {
+            Text("Mode")
+            if mode == .automatic {
+                Label(effort.title, systemImage: effort.symbol)
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(effort == .efficient ? Theme.good : Theme.accent)
+                    .help("\(effort.title) now: every \(Int(effort.interval.rawValue)) s")
+            }
+        }
     }
 }
