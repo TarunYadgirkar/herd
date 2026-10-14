@@ -33,6 +33,9 @@ struct SettingsView: View {
                 }
                 .disabled(!showMenuBarExtra)
             }
+            Section("System processes") {
+                RootHelperRow()
+            }
             Section("Alerts") {
                 Toggle("Runaway app alerts", isOn: $alertsEnabled)
                 NotificationStatusRow(status: notificationStatus)
@@ -83,5 +86,94 @@ private struct NotificationStatusRow: View {
         case .denied: "Off in System Settings"
         default: "Not set up"
         }
+    }
+}
+
+// Without the helper, root and system processes come from top every 10 seconds, with no power or disk numbers.
+// macOS asks for approval in Login Items before a root helper can run, so the row walks through that step.
+private struct RootHelperRow: View {
+    @State private var state: RootHelperState = .off
+    @State private var failure: String?
+
+    private static let approvalPoll: Duration = .seconds(2)
+
+    var body: some View {
+        LabeledContent("Exact stats") {
+            HStack(spacing: Theme.itemSpacing) {
+                Image(systemName: symbol)
+                    .foregroundStyle(color)
+                Text(failure ?? title)
+                action
+            }
+        }
+        .task(id: state) {
+            state = RootHelper.shared.state
+            while state == .needsApproval, !Task.isCancelled {
+                try? await Task.sleep(for: Self.approvalPoll)
+                state = RootHelper.shared.state
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var action: some View {
+        switch state {
+        case .off:
+            Button("Turn On") { turnOn() }
+        case .needsApproval:
+            Button("Open Login Items") { RootHelper.shared.openApprovalSettings() }
+        case .on:
+            Button("Turn Off") { Task { await turnOff() } }
+        case .unavailable:
+            EmptyView()
+        }
+    }
+
+    private var title: String {
+        switch state {
+        case .on: "On"
+        case .needsApproval: "Allow in Login Items"
+        case .off: "Off"
+        case .unavailable: "Needs a signed build"
+        }
+    }
+
+    private var symbol: String {
+        switch state {
+        case .on: "checkmark.circle.fill"
+        case .needsApproval: "exclamationmark.triangle.fill"
+        case .off, .unavailable: "circle.dashed"
+        }
+    }
+
+    private var color: Color {
+        switch state {
+        case .on: Theme.good
+        case .needsApproval: Theme.warning
+        case .off, .unavailable: Theme.neutral
+        }
+    }
+
+    // register() throws "Operation not permitted" when macOS still needs the user's approval, which the row already shows.
+    private func turnOn() {
+        var message: String?
+        do {
+            try RootHelper.shared.register()
+        } catch {
+            message = "Couldn't turn on: \(error.localizedDescription)"
+        }
+        state = RootHelper.shared.state
+        failure = state == .needsApproval ? nil : message
+        if state == .needsApproval { RootHelper.shared.openApprovalSettings() }
+    }
+
+    private func turnOff() async {
+        do {
+            try await RootHelper.shared.unregister()
+            failure = nil
+        } catch {
+            failure = "Couldn't turn off: \(error.localizedDescription)"
+        }
+        state = RootHelper.shared.state
     }
 }

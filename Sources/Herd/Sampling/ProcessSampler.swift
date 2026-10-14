@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import HerdHelperKit
 
 final class ProcessSampler {
     private struct ProcessKey: Hashable {
@@ -38,6 +39,8 @@ final class ProcessSampler {
     // top walks every thread on the Mac, so it samples slowly and only while someone is looking at per-app numbers.
     private static let topInterval: TimeInterval = 10
     private let top = TopStream(interval: topInterval)
+    private let helper = RootHelper.shared
+    private var isDetailVisible = false
     private var staticCache: [ProcessKey: StaticInfo] = [:]
     private var previous: [ProcessKey: Counters] = [:]
     private var ports: [ProcessKey: [UInt16]] = [:]
@@ -66,10 +69,11 @@ final class ProcessSampler {
     private var pendingTopStop: Task<Void, Never>?
 
     func setDetailVisible(_ isVisible: Bool) {
+        isDetailVisible = isVisible
         pendingTopStop?.cancel()
         pendingTopStop = nil
         if isVisible {
-            top.start()
+            if helper.state != .on { top.start() }
             return
         }
         pendingTopStop = Self.stopAfterGrace(top)
@@ -86,18 +90,43 @@ final class ProcessSampler {
     func sample() -> [ProcessSample] {
         let now = DispatchTime.now().uptimeNanoseconds
         let kernelList = KernelProcessList.all()
-        let reported = top.usage()
         var readings: [pid_t: Reading] = [:]
         readings.reserveCapacity(kernelList.count)
+        var unreadable: [pid_t] = []
         for proc in kernelList {
             let direct = proc.pid == Self.kernelPid ? nil : readDirect(proc.pid, now: now)
-            readings[proc.pid] = direct ?? reported[proc.pid].map(Self.reading)
+            if let direct { readings[proc.pid] = direct } else { unreadable.append(proc.pid) }
         }
+        fillUnreadable(unreadable, into: &readings, now: now)
         return buildSamples(kernelList, readings: readings)
+    }
+
+    // The root helper gives the same exact counters Herd reads for its own processes; top only stands in when the helper can't answer.
+    private func fillUnreadable(_ pids: [pid_t], into readings: inout [pid_t: Reading], now: UInt64) {
+        if let helped = helper.usage(for: pids) {
+            if top.isActive { top.stop() }
+            for pid in pids { readings[pid] = helped[pid].map { reading($0, now: now) } }
+            return
+        }
+        if isDetailVisible { top.start() }
+        let reported = top.usage()
+        for pid in pids { readings[pid] = reported[pid].map(Self.reading) }
     }
 
     private static func reading(_ usage: ReportedUsage) -> Reading {
         Reading(counters: nil, reported: usage, memory: usage.footprint, threads: usage.threads)
+    }
+
+    private func reading(_ usage: RawUsage, now: UInt64) -> Reading {
+        let counters = Counters(
+            cpuNanos: UInt64(Double(usage.cpuTicks) * ticksToNanos),
+            energyNanojoules: usage.energyNanojoules,
+            idleWakeups: usage.idleWakeups,
+            diskRead: usage.diskRead,
+            diskWrite: usage.diskWrite,
+            time: now
+        )
+        return Reading(counters: counters, reported: nil, memory: usage.footprint, threads: Int(usage.threads))
     }
 
     private func buildSamples(_ kernelList: [KernelProcess], readings: [pid_t: Reading]) -> [ProcessSample] {

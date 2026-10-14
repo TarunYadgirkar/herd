@@ -67,6 +67,8 @@ final class TopStream: @unchecked Sendable {
         }
     }
 
+    var isActive: Bool { lock.withLock { isRunning } }
+
     func stop() {
         lock.withLock {
             isRunning = false
