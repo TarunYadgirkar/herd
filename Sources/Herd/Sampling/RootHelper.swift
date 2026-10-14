@@ -40,6 +40,19 @@ final class RootHelper: @unchecked Sendable {
     func register() throws {
         defer { lock.withLock { cachedState = nil } }
         try service.register()
+        UserDefaults.standard.set(HelperIdentity.ownLeafCertificateHash(), forKey: Self.registeredSignerKey)
+    }
+
+    private static let registeredSignerKey = "rootHelperSigner"
+
+    // launchd keeps the launch constraint from when the helper was registered, so after Herd is re-signed with another
+    // certificate (a renewal, Development to Developer ID) the helper silently stops starting until it's registered again.
+    func reregisterIfResigned() async {
+        guard state == .on, let signer = HelperIdentity.ownLeafCertificateHash() else { return }
+        let previous = UserDefaults.standard.string(forKey: Self.registeredSignerKey)
+        guard previous != signer else { return }
+        if previous != nil { try? await unregister() }
+        try? register()
     }
 
     func unregister() async throws {

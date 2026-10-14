@@ -76,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             Self.store.start()
             Self.store.alerts.requestAuthorization()
         }
+        Task.detached { await RootHelper.shared.reregisterIfResigned() }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {

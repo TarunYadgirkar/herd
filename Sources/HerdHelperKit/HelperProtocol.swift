@@ -18,7 +18,7 @@ public enum HelperIdentity {
         return "identifier \"\(identifier)\" and anchor apple generic and \(signer) and !(entitlement[\"com.apple.security.get-task-allow\"] exists)"
     }
 
-    private static func ownLeafCertificateHash() -> String? {
+    public static func ownLeafCertificateHash() -> String? {
         var code: SecCode?
         guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
         var staticCode: SecStaticCode?
