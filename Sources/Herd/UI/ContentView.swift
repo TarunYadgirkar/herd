@@ -47,7 +47,7 @@ struct ContentView: View {
                 rows: rows,
                 rowsVersion: cache.version,
                 selection: $selection,
-                sortOrder: $sortOrder,
+                sortOrder: tableSortOrder,
                 selected: selection,
                 sorting: sortOrder,
                 onPointerMove: holdOrder,
@@ -68,7 +68,6 @@ struct ContentView: View {
         .toolbar { toolbar }
         .navigationTitle("Processes")
         .navigationSubtitle(countSummary)
-        .onChange(of: sortOrder) { _, _ in hold.release() }
         .onChange(of: store.requestedSelection, initial: true) { _, requested in
             guard let requested else { return }
             scope = .all
@@ -124,26 +123,24 @@ struct ContentView: View {
     private var visibleRows: [TableRowItem] {
         let groups = store.groups
         let inputs = RowInputs(scope: scope, isTree: isTree, query: query, sortOrder: sortOrder)
-        return cache.rows(for: inputs, histories: store.groupHistory) { buildRows(groups) }
+        return cache.rows(for: inputs, histories: store.groupHistory) { inputsChanged in buildRows(groups, inputsChanged: inputsChanged) }
     }
 
-    private func buildRows(_ groups: [AppGroup]) -> [TableRowItem] {
+    // A sort click, search or scope change is the user asking for a new order, so it overrides the pointer hold in this same pass.
+    private func buildRows(_ groups: [AppGroup], inputsChanged: Bool) -> [TableRowItem] {
         let visible = groups.filter { scope.includes($0.kind) }
         let rows = isTree ? TreeRowBuilder.rows(for: visible, query: query) : TableRowBuilder.rows(for: visible, query: query)
-        let sorted = TableRowBuilder.sorted(rows, using: sortOrder, smoothed: smoothedValue)
+        let sorted = TableRowBuilder.sorted(rows, using: sortOrder)
+        if inputsChanged { hold.release() }
         guard let order = hold.activeOrder else { return sorted }
         return TableRowBuilder.holding(sorted, order: order)
     }
 
-    private static let smoothingSamples = 3
-
-    private var smoothedValue: ((TableRowItem) -> Double?)? {
-        guard let keyPath = sortOrder.first?.keyPath, let column = TableRowBuilder.metric(for: keyPath) else { return nil }
-        let history = store.groupHistory
-        return { row in
-            guard row.role == .group else { return nil }
-            return history[row.id]?.series(for: column).recentAverage(Self.smoothingSamples)
-        }
+    private var tableSortOrder: Binding<[KeyPathComparator<TableRowItem>]> {
+        Binding(
+            get: { sortOrder },
+            set: { sortOrder = TableRowBuilder.largestFirstOnNewColumn($0, previous: sortOrder) }
+        )
     }
 
     private func holdOrder() {
@@ -220,14 +217,15 @@ private final class RowCache {
     private(set) var currentRows: [TableRowItem] = []
     private(set) var version = 0
 
-    func rows(for inputs: RowInputs, histories latest: [String: GroupHistory], build: () -> [TableRowItem]) -> [TableRowItem] {
+    func rows(for inputs: RowInputs, histories latest: [String: GroupHistory], build: (_ inputsChanged: Bool) -> [TableRowItem]) -> [TableRowItem] {
         let now = Date()
         let isStale = now.timeIntervalSince(committedAt) >= Self.minimumInterval
-        guard inputs != self.inputs || currentRows.isEmpty || isStale else { return currentRows }
+        let inputsChanged = inputs != self.inputs
+        guard inputsChanged || currentRows.isEmpty || isStale else { return currentRows }
         self.inputs = inputs
         committedAt = now
         histories = latest
-        currentRows = build()
+        currentRows = build(inputsChanged)
         version += 1
         return currentRows
     }

@@ -8,11 +8,6 @@ struct Series: Sendable, Equatable {
 
     var latest: Double { values.last ?? 0 }
 
-    func recentAverage(_ count: Int) -> Double? {
-        let recent = values.suffix(count)
-        guard !recent.isEmpty else { return nil }
-        return recent.reduce(0, +) / Double(recent.count)
-    }
     var peak: Double { values.max() ?? 0 }
 
     func appending(_ value: Double) -> Series {

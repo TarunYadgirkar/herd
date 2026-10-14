@@ -199,21 +199,18 @@ enum TableRowBuilder {
         return members.count == 1 ? members.first?.subtitle : nil
     }
 
-    // Top-level rows rank by a short rolling average so momentary spikes don't reshuffle the table every tick.
-    static func sorted(_ rows: [TableRowItem], using comparators: [KeyPathComparator<TableRowItem>], smoothed: ((TableRowItem) -> Double?)? = nil) -> [TableRowItem] {
+    // Rows sort on the value the cell shows, so the order always matches what's on screen.
+    static func sorted(_ rows: [TableRowItem], using comparators: [KeyPathComparator<TableRowItem>]) -> [TableRowItem] {
         guard let first = comparators.first else { return rows }
         let column = metric(for: first.keyPath)
-        let instant = sortValue(for: first.keyPath).map { value in { (row: TableRowItem) in column?.displayed(value(row)) ?? value(row) } }
-        let topLevel: ((TableRowItem) -> Double)? = sortValue(for: first.keyPath).map { value in
-            { row in column?.displayed(smoothed?(row) ?? value(row)) ?? value(row) }
-        }
-        return sorted(rows, value: topLevel, childValue: instant, ascending: first.order == .forward)
+        let shown = sortValue(for: first.keyPath).map { value in { (row: TableRowItem) in column?.displayed(value(row)) ?? value(row) } }
+        return sorted(rows, value: shown, ascending: first.order == .forward)
     }
 
-    private static func sorted(_ rows: [TableRowItem], value: ((TableRowItem) -> Double)?, childValue: ((TableRowItem) -> Double)?, ascending: Bool) -> [TableRowItem] {
+    private static func sorted(_ rows: [TableRowItem], value: ((TableRowItem) -> Double)?, ascending: Bool) -> [TableRowItem] {
         let decorated = rows.map { row in
             var copy = row
-            copy.children = row.children.map { sorted($0, value: childValue, childValue: childValue, ascending: ascending) }
+            copy.children = row.children.map { sorted($0, value: value, ascending: ascending) }
             return (key: value?(row) ?? 0, title: row.title.lowercased(), row: copy)
         }
         return decorated.sorted { lhs, rhs in
@@ -221,6 +218,15 @@ enum TableRowBuilder {
             if value == nil && lhs.title != rhs.title { return ascending ? lhs.title < rhs.title : lhs.title > rhs.title }
             return lhs.title == rhs.title ? lhs.row.id < rhs.row.id : lhs.title < rhs.title
         }.map(\.row)
+    }
+
+    // Table headers start a newly picked column in ascending order, which puts the idlest processes on top.
+    // A number column should open on its biggest users, the way Activity Monitor does; a second click still flips it.
+    static func largestFirstOnNewColumn(_ next: [KeyPathComparator<TableRowItem>], previous: [KeyPathComparator<TableRowItem>]) -> [KeyPathComparator<TableRowItem>] {
+        guard let first = next.first, first.keyPath != previous.first?.keyPath, metric(for: first.keyPath) != nil else { return next }
+        var largestFirst = first
+        largestFirst.order = .reverse
+        return [largestFirst] + next.dropFirst()
     }
 
     static func metric(for keyPath: PartialKeyPath<TableRowItem>) -> MetricColumn? {
