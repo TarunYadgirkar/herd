@@ -45,7 +45,9 @@ final class AppGrouper {
         }
         assignments = nextAssignments
         return buckets.map { key, bucket in
-            makeGroup(key: key, target: bucket.target, members: bucket.members, regularAppPids: regularAppPids)
+            var group = makeGroup(key: key, target: bucket.target, members: bucket.members, regularAppPids: regularAppPids)
+            group.launcherBundle = launcher(of: bucket.target, members: bucket.members, byPid: byPid)
+            return group
         }
     }
 
@@ -71,6 +73,32 @@ final class AppGrouper {
     private func launcherBundle(of sample: ProcessSample, byPid: [pid_t: ProcessSample]) -> String? {
         guard sample.responsiblePid != sample.pid, let responsible = byPid[sample.responsiblePid] else { return nil }
         return Self.outermostBundle(responsible.path)
+    }
+
+    private func launcher(of target: Target, members: [GroupedProcess], byPid: [pid_t: ProcessSample]) -> String? {
+        switch target {
+        case .runtime(_, let launcher): return launcher
+        case .project: return nil
+        case .bundle(let path):
+            return members.lazy.compactMap { Self.ancestorBundle(of: $0.sample, excluding: path, byPid: byPid) }.first
+        case .standalone:
+            return members.lazy.compactMap { Self.ancestorBundle(of: $0.sample, excluding: nil, byPid: byPid) }.first
+        }
+    }
+
+    private static let ancestorHops = 4
+
+    // Apps often launch helpers through a stub that gives up responsibility (Claude starts Claude Code via a "disclaimer"),
+    // so after the responsible process, the parent chain is walked to find the app that started it.
+    private static func ancestorBundle(of sample: ProcessSample, excluding own: String?, byPid: [pid_t: ProcessSample]) -> String? {
+        var candidates: [pid_t] = sample.responsiblePid != sample.pid ? [sample.responsiblePid] : []
+        var current = sample
+        for _ in 0..<ancestorHops {
+            guard current.ppid > 1, let parent = byPid[current.ppid] else { break }
+            candidates.append(parent.pid)
+            current = parent
+        }
+        return candidates.lazy.compactMap { byPid[$0].flatMap { outermostBundle($0.path) } }.first { $0 != own }
     }
 
     // Interpreters bundled inside an app (ChatGPT's node, an Electron app's python) belong to that app, not the global runtime group.

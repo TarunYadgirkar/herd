@@ -82,6 +82,8 @@ struct AppGroup: Sendable, Identifiable {
     let processes: [GroupedProcess]
     let metrics: Metrics
     let project: String?
+    // The app that started this group, for groups without an icon of their own (a CLI run by Claude, Node started by ChatGPT).
+    var launcherBundle: String?
 
     var pids: [pid_t] { processes.map(\.sample.pid) }
     // Quitting a whole group is only safe when it's one app or one project; a runtime catch-all mixes unrelated work.

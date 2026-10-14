@@ -9,13 +9,17 @@ enum IconProvider {
     private static let renderScale: CGFloat = 2
 
     static func icon(for group: AppGroup, size: CGFloat) -> NSImage? {
-        group.bundlePath.map { icon(forPath: $0, size: size) }
+        IconSource.reference(for: group).map { icon(for: $0, size: size) }
     }
 
     static func icon(forPath path: String, size: CGFloat) -> NSImage {
-        let key = "\(path)@\(Int(size))" as NSString
+        icon(for: .file(path), size: size)
+    }
+
+    private static func icon(for reference: IconSource.Reference, size: CGFloat) -> NSImage {
+        let key = "\(reference)@\(Int(size))" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        let image = rendered(NSWorkspace.shared.icon(forFile: path), size: size)
+        let image = rendered(IconSource.image(for: reference), size: size)
         cache.setObject(image, forKey: key)
         return image
     }
