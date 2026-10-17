@@ -16,7 +16,7 @@ swift build                      # debug build
 swift test                       # parser and grouping tests
 ./scripts/build-app.sh           # release build packaged as build/Herd.app
 ./scripts/build-app.sh --install # also copies it to /Applications
-./scripts/notarize.sh            # Developer ID build, notarized and zipped for sharing
+./scripts/notarize.sh            # Developer ID build, notarized, packaged as build/Herd.dmg
 swiftlint lint                   # cyclomatic complexity stays at 15 or below
 ```
 
