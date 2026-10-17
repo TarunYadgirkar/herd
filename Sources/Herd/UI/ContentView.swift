@@ -51,7 +51,7 @@ struct ContentView: View {
                 selected: selection,
                 sorting: sortOrder,
                 onPointerMove: holdOrder,
-                history: cache.history(for:),
+                history: store.currentHistory(for:),
                 trendColumn: trendColumn,
                 actions: actions,
                 onOpen: { showInspector = true },
@@ -123,7 +123,7 @@ struct ContentView: View {
     private var visibleRows: [TableRowItem] {
         let groups = store.groups
         let inputs = RowInputs(scope: scope, isTree: isTree, query: query, sortOrder: sortOrder)
-        return cache.rows(for: inputs, histories: store.groupHistory) { inputsChanged in buildRows(groups, inputsChanged: inputsChanged) }
+        return cache.rows(for: inputs) { inputsChanged in buildRows(groups, inputsChanged: inputsChanged) }
     }
 
     // A sort click, search or scope change is the user asking for a new order, so it overrides the pointer hold in this same pass.
@@ -222,24 +222,18 @@ private final class RowCache {
 
     private var inputs: RowInputs?
     private var committedAt = Date.distantPast
-    private var histories: [String: GroupHistory] = [:]
     private(set) var currentRows: [TableRowItem] = []
     private(set) var version = 0
 
-    func rows(for inputs: RowInputs, histories latest: [String: GroupHistory], build: (_ inputsChanged: Bool) -> [TableRowItem]) -> [TableRowItem] {
+    func rows(for inputs: RowInputs, build: (_ inputsChanged: Bool) -> [TableRowItem]) -> [TableRowItem] {
         let now = Date()
         let isStale = now.timeIntervalSince(committedAt) >= Self.minimumInterval
         let inputsChanged = inputs != self.inputs
         guard inputsChanged || currentRows.isEmpty || isStale else { return currentRows }
         self.inputs = inputs
         committedAt = now
-        histories = latest
         currentRows = build(inputsChanged)
         version += 1
         return currentRows
-    }
-
-    func history(for id: String) -> GroupHistory {
-        histories[id] ?? GroupHistory()
     }
 }

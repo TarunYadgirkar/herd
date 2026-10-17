@@ -41,6 +41,8 @@ enum SamplingEffort: Sendable, Equatable {
 
     // Per-app network comes from a long-running nettop. Light stops it while no window shows per-app numbers.
     var tracksNetworkWhileHidden: Bool { self == .precise }
+    // Light matches nettop's window to its own tick; Full keeps 2 s windows, since 1 s ones make nettop wake twice as often.
+    var networkInterval: TimeInterval { self == .precise ? 2 : interval.rawValue }
 
     var title: String {
         switch self {

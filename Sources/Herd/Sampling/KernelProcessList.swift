@@ -21,18 +21,22 @@ enum KernelProcessList {
         return makeProcess(info)
     }
 
-    static func all() -> [KernelProcess] {
+    // The caller keeps the buffer between ticks, so a tick reuses about 800 KB instead of allocating and zeroing it again.
+    static func all(reusing buffer: inout [kinfo_proc]) -> [KernelProcess] {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
         for _ in 0..<fetchAttempts {
             var size = 0
             guard sysctl(&mib, UInt32(mib.count), nil, &size, nil, 0) == 0 else { return [] }
             let capacity = size / MemoryLayout<kinfo_proc>.stride + 32
-            var buffer = [kinfo_proc](repeating: kinfo_proc(), count: capacity)
-            size = capacity * MemoryLayout<kinfo_proc>.stride
+            if buffer.count < capacity { buffer = [kinfo_proc](repeating: kinfo_proc(), count: capacity + capacity / 8) }
+            size = buffer.count * MemoryLayout<kinfo_proc>.stride
             let result = buffer.withUnsafeMutableBufferPointer {
                 sysctl(&mib, UInt32(mib.count), $0.baseAddress, &size, nil, 0)
             }
-            if result != 0 && errno == ENOMEM { continue }
+            if result != 0 && errno == ENOMEM {
+                buffer = []
+                continue
+            }
             guard result == 0 else { return [] }
             let count = size / MemoryLayout<kinfo_proc>.stride
             return buffer.prefix(count).compactMap(makeProcess)

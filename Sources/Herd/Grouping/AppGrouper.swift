@@ -25,7 +25,17 @@ final class AppGrouper {
     private var bundleNames: [String: String] = [:]
     private var bundleKeys: [String: String] = [:]
     private var assignments: [String: Assignment] = [:]
+    // Paths and parent chains rarely change between ticks, so bundle lookups are cached instead of re-parsing every path.
+    private static let bundleCacheLimit = 4_096
+    private var bundles: [String: String?] = [:]
+    private var ancestors: [String: AncestorEntry] = [:]
+    private var nextAncestors: [String: AncestorEntry] = [:]
     private let projects: ProjectResolver
+
+    private struct AncestorEntry {
+        let excluding: String?
+        let bundle: String?
+    }
 
     init(projects: ProjectResolver = ProjectResolver()) {
         self.projects = projects
@@ -43,6 +53,10 @@ final class AppGrouper {
             return (sample, assignment)
         }
         assignments = nextAssignments
+        defer {
+            ancestors = nextAncestors
+            nextAncestors = [:]
+        }
         let canonical = canonicalBundlePaths(assigned, regularAppPids: regularAppPids)
         for (sample, assignment) in assigned {
             let member = GroupedProcess(sample: sample, title: assignment.title, subtitle: assignment.subtitle)
@@ -56,12 +70,12 @@ final class AppGrouper {
     }
 
     private func assign(_ sample: ProcessSample, byPid: [pid_t: ProcessSample]) -> Assignment {
-        if let runtime = Self.standaloneRuntime(sample) {
+        if let runtime = standaloneRuntime(sample) {
             let label = ScriptLabel.make(runtime: runtime, arguments: sample.arguments, workingDirectory: sample.workingDirectory)
             let target: Target = projects.project(for: sample).map { .project($0) } ?? .runtime(runtime, launcher: launcherBundle(of: sample, byPid: byPid))
             return makeAssignment(target, title: label.title, subtitle: label.location, path: sample.path)
         }
-        let ownBundle = Self.outermostBundle(sample.path)
+        let ownBundle = bundle(of: sample.path)
         if let parentBundle = responsibleBundle(for: sample, ownBundle: ownBundle, byPid: byPid) {
             return makeAssignment(.bundle(parentBundle), title: sample.name, path: sample.path)
         }
@@ -97,7 +111,7 @@ final class AppGrouper {
     // Without a project, the app that launched a runtime (Claude starting MCP servers, an editor starting a language server) is the best owner Herd can name.
     private func launcherBundle(of sample: ProcessSample, byPid: [pid_t: ProcessSample]) -> String? {
         guard sample.responsiblePid != sample.pid, let responsible = byPid[sample.responsiblePid] else { return nil }
-        return Self.outermostBundle(responsible.path)
+        return bundle(of: responsible.path)
     }
 
     private func launcher(of target: Target, members: [GroupedProcess], byPid: [pid_t: ProcessSample]) -> String? {
@@ -105,39 +119,57 @@ final class AppGrouper {
         case .runtime(_, let launcher): return launcher
         case .project: return nil
         case .bundle(let path):
-            return members.lazy.compactMap { Self.ancestorBundle(of: $0.sample, excluding: path, byPid: byPid) }.first
+            return members.lazy.compactMap { self.cachedAncestorBundle(of: $0.sample, excluding: path, byPid: byPid) }.first
         case .standalone:
-            return members.lazy.compactMap { Self.ancestorBundle(of: $0.sample, excluding: nil, byPid: byPid) }.first
+            return members.lazy.compactMap { self.cachedAncestorBundle(of: $0.sample, excluding: nil, byPid: byPid) }.first
         }
     }
 
     private static let ancestorHops = 4
 
+    private func cachedAncestorBundle(of sample: ProcessSample, excluding own: String?, byPid: [pid_t: ProcessSample]) -> String? {
+        if let cached = ancestors[sample.id], cached.excluding == own {
+            nextAncestors[sample.id] = cached
+            return cached.bundle
+        }
+        let entry = AncestorEntry(excluding: own, bundle: ancestorBundle(of: sample, excluding: own, byPid: byPid))
+        nextAncestors[sample.id] = entry
+        return entry.bundle
+    }
+
+    private func bundle(of path: String) -> String? {
+        if let cached = bundles[path] { return cached }
+        if bundles.count >= Self.bundleCacheLimit { bundles.removeAll(keepingCapacity: true) }
+        let found = Self.outermostBundle(path)
+        bundles[path] = .some(found)
+        return found
+    }
+
     // Apps often launch helpers through a stub that gives up responsibility (Claude starts Claude Code via a "disclaimer"),
     // so after the responsible process, the parent chain is walked to find the app that started it.
-    private static func ancestorBundle(of sample: ProcessSample, excluding own: String?, byPid: [pid_t: ProcessSample]) -> String? {
+    private func ancestorBundle(of sample: ProcessSample, excluding own: String?, byPid: [pid_t: ProcessSample]) -> String? {
         var candidates: [pid_t] = sample.responsiblePid != sample.pid ? [sample.responsiblePid] : []
         var current = sample
-        for _ in 0..<ancestorHops {
+        for _ in 0..<Self.ancestorHops {
             guard current.ppid > 1, let parent = byPid[current.ppid] else { break }
             candidates.append(parent.pid)
             current = parent
         }
-        return candidates.lazy.compactMap { byPid[$0].flatMap { outermostBundle($0.path) } }.first { $0 != own }
+        return candidates.lazy.compactMap { byPid[$0].flatMap { self.bundle(of: $0.path) } }.first { $0 != own }
     }
 
     // Interpreters bundled inside an app (ChatGPT's node, an Electron app's python) belong to that app, not the global runtime group.
-    private static func standaloneRuntime(_ sample: ProcessSample) -> Runtime? {
+    private func standaloneRuntime(_ sample: ProcessSample) -> Runtime? {
         guard let runtime = Runtime.detect(executableName: sample.name) else { return nil }
-        guard let bundle = outermostBundle(sample.path) else { return runtime }
+        guard let bundle = bundle(of: sample.path) else { return runtime }
         return (bundle as NSString).lastPathComponent == "Python.app" ? runtime : nil
     }
 
     private func responsibleBundle(for sample: ProcessSample, ownBundle: String?, byPid: [pid_t: ProcessSample]) -> String? {
         guard sample.responsiblePid != sample.pid,
               let responsible = byPid[sample.responsiblePid],
-              Self.standaloneRuntime(responsible) == nil,
-              let bundle = Self.outermostBundle(responsible.path) else { return nil }
+              standaloneRuntime(responsible) == nil,
+              let bundle = bundle(of: responsible.path) else { return nil }
         guard let ownBundle else { return bundle }
         let isServiceOnBehalf = sample.path.contains(".xpc/") || !Self.isPrimaryBinary(sample.path, of: ownBundle)
         return isServiceOnBehalf ? bundle : nil

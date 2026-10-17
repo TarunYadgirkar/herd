@@ -35,8 +35,8 @@ final class MonitorStore {
     private(set) var headline = Headline()
     private(set) var groups: [AppGroup] = []
     private(set) var system = SystemSnapshot()
-    private(set) var systemHistory = SystemHistory()
-    private(set) var groupHistory: [String: GroupHistory] = [:]
+    // Histories are kept once and mutated in place; this revision is what tells views they changed.
+    private(set) var historyRevision = 0
     private(set) var processCount = 0
     private(set) var hasFirstFrame = false
     private(set) var projectActivity = ActivityLedger()
@@ -65,8 +65,8 @@ final class MonitorStore {
     @ObservationIgnored private var screenObservers: [NSObjectProtocol] = []
     private var isDetailVisible: Bool { !visibleSurfaces.isEmpty && !isScreenAway }
     @ObservationIgnored private var latestFrame: Frame?
-    @ObservationIgnored private var latestGroupHistory: [String: GroupHistory] = [:]
-    @ObservationIgnored private var latestSystemHistory = SystemHistory()
+    @ObservationIgnored private var groupHistories: [String: GroupHistory] = [:]
+    @ObservationIgnored private var liveSystemHistory = SystemHistory()
     @ObservationIgnored private var workspaceObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var lastHistorySave = Date()
 
@@ -74,6 +74,7 @@ final class MonitorStore {
         let mode = UserDefaults.standard.string(forKey: PowerMode.key).flatMap(PowerMode.init) ?? PowerMode.standard
         powerMode = mode
         effort = mode.effort(onBattery: PowerSource.isOnBattery, lowPowerMode: PowerSource.isLowPowerMode)
+        liveSystemHistory = SystemHistory(capacity: historySamples)
     }
 
     func start() {
@@ -107,6 +108,7 @@ final class MonitorStore {
         let next = powerMode.effort(onBattery: PowerSource.isOnBattery, lowPowerMode: PowerSource.isLowPowerMode)
         guard next != effort else { return }
         effort = next
+        resizeHistory()
         Task { await engine.setEffort(next) }
     }
 
@@ -139,8 +141,19 @@ final class MonitorStore {
         return groups.first { $0.id == id }
     }
 
+    var systemHistory: SystemHistory {
+        _ = historyRevision
+        return liveSystemHistory
+    }
+
     func history(for id: String) -> GroupHistory {
-        groupHistory[id] ?? GroupHistory()
+        _ = historyRevision
+        return currentHistory(for: id)
+    }
+
+    // Doesn't subscribe the caller, so the table's trend cells redraw only when its rows do.
+    func currentHistory(for id: String) -> GroupHistory {
+        groupHistories[id] ?? GroupHistory(capacity: historySamples)
     }
 
     private func refresh(force: Bool = false) async {
@@ -232,20 +245,27 @@ final class MonitorStore {
     private func publishDetail() {
         guard let latestFrame else { return }
         system = latestFrame.system
-        systemHistory = latestSystemHistory
         groups = latestFrame.groups
         processCount = latestFrame.processCount
-        groupHistory = latestGroupHistory
+        historyRevision += 1
         projectActivity = projectTracker.ledger
     }
 
     // The first frame has no previous counters, so its rates are all zero and would drag every sparkline down.
     private func recordHistory(_ frame: Frame) {
-        var nextHistory: [String: GroupHistory] = [:]
+        let capacity = historySamples
+        let live = Set(frame.groups.map(\.id))
+        for id in groupHistories.keys.filter({ !live.contains($0) }) { groupHistories.removeValue(forKey: id) }
         for group in frame.groups {
-            nextHistory[group.id] = (latestGroupHistory[group.id] ?? GroupHistory()).appending(group.metrics)
+            groupHistories[group.id, default: GroupHistory(capacity: capacity)].append(group.metrics)
         }
-        latestGroupHistory = nextHistory
-        latestSystemHistory = latestSystemHistory.appending(frame.system)
+        liveSystemHistory.append(frame.system)
+    }
+
+    private func resizeHistory() {
+        let capacity = historySamples
+        liveSystemHistory.resize(to: capacity)
+        for id in groupHistories.keys { groupHistories[id]?.resize(to: capacity) }
+        historyRevision += 1
     }
 }

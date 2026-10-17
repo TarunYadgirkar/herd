@@ -51,6 +51,7 @@ actor SamplingEngine {
     }
 
     private func updateNetworkTracking() {
+        networkSampler.setInterval(effort.networkInterval)
         if isStarted && (effort.tracksNetworkWhileHidden || isDetailVisible) {
             networkSampler.start()
         } else {
@@ -71,16 +72,7 @@ actor SamplingEngine {
         let network = networkSampler.rates()
         if tickCount % Self.assertionRefreshTicks == 0 { awake = ProcessResources.sleepAssertions() }
         tickCount += 1
-        let samples = processSampler.sample().map { sample in
-            var enriched = sample
-            enriched.gpuPercent = gpu[sample.pid] ?? 0
-            enriched.sleepAssertions = awake[sample.pid] ?? []
-            if let rate = network[sample.pid] {
-                enriched.netInBps = rate.inBps
-                enriched.netOutBps = rate.outBps
-            }
-            return enriched
-        }
+        let samples = processSampler.sample(extras: ProcessExtras(gpu: gpu, network: network, sleepAssertions: awake))
         let groups = grouper.group(samples, regularAppPids: regularAppPids)
         return Frame(date: Date(), elapsed: elapsedSinceLastTick(), system: system, groups: groups, processCount: samples.count)
     }

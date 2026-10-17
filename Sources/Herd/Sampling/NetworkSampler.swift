@@ -11,7 +11,7 @@ final class NetworkSampler: @unchecked Sendable {
     private static let staleIntervals = 3.0
     private static let newline = UInt8(ascii: "\n")
 
-    private let interval: TimeInterval
+    private var interval: TimeInterval
     private let lock = NSLock()
 
     private var isRunning = false
@@ -43,6 +43,18 @@ final class NetworkSampler: @unchecked Sendable {
         lock.withLock {
             isRunning = false
             tearDownLocked()
+        }
+    }
+
+    // nettop reports fixed windows, so Light reads one complete window per tick instead of one 2 s window out of every 5 s.
+    func setInterval(_ seconds: TimeInterval) {
+        lock.withLock {
+            let next = max(1, seconds.rounded())
+            guard next != interval else { return }
+            interval = next
+            guard isRunning else { return }
+            tearDownLocked()
+            launchLocked()
         }
     }
 

@@ -2,6 +2,13 @@ import Darwin
 import Foundation
 import HerdHelperKit
 
+// Per-process values other samplers measure, merged into each sample as it is built so the list isn't copied again.
+struct ProcessExtras {
+    var gpu: [pid_t: Double] = [:]
+    var network: [pid_t: NetworkSampler.Rate] = [:]
+    var sleepAssertions: [pid_t: [String]] = [:]
+}
+
 final class ProcessSampler {
     private struct ProcessKey: Hashable {
         let pid: pid_t
@@ -21,11 +28,26 @@ final class ProcessSampler {
 
     private struct Counters {
         let cpuNanos: UInt64
+        var childCpuNanos: UInt64 = 0
         let energyNanojoules: UInt64
         let idleWakeups: UInt64
         let diskRead: UInt64
         let diskWrite: UInt64
         let time: UInt64
+
+        static func zero(at time: UInt64) -> Counters {
+            Counters(cpuNanos: 0, energyNanojoules: 0, idleWakeups: 0, diskRead: 0, diskWrite: 0, time: time)
+        }
+    }
+
+    private struct Seen {
+        let counters: Counters
+        let ppid: pid_t
+    }
+
+    private struct Tick {
+        let uptime: UInt64
+        let date: Date
     }
 
     private struct Reading {
@@ -42,7 +64,9 @@ final class ProcessSampler {
     private let helper = RootHelper.shared
     private var isDetailVisible = false
     private var staticCache: [ProcessKey: StaticInfo] = [:]
-    private var previous: [ProcessKey: Counters] = [:]
+    private var previous: [ProcessKey: Seen] = [:]
+    private var lastTick: Tick?
+    private var kinfoBuffer: [kinfo_proc] = []
     private var ports: [ProcessKey: [UInt16]] = [:]
     private var tick = 0
     private static let portRefreshTicks = 5
@@ -87,30 +111,32 @@ final class ProcessSampler {
         }
     }
 
-    func sample() -> [ProcessSample] {
-        let now = DispatchTime.now().uptimeNanoseconds
-        let kernelList = KernelProcessList.all()
-        var readings: [pid_t: Reading] = [:]
-        readings.reserveCapacity(kernelList.count)
-        var unreadable: [pid_t] = []
-        for proc in kernelList {
-            let direct = proc.pid == Self.kernelPid ? nil : readDirect(proc.pid, now: now)
-            if let direct { readings[proc.pid] = direct } else { unreadable.append(proc.pid) }
+    func sample(extras: ProcessExtras = ProcessExtras()) -> [ProcessSample] {
+        let now = Tick(uptime: DispatchTime.now().uptimeNanoseconds, date: Date())
+        let kernelList = KernelProcessList.all(reusing: &kinfoBuffer)
+        var readings = [Reading?](repeating: nil, count: kernelList.count)
+        var unreadable: [Int] = []
+        for (index, proc) in kernelList.enumerated() {
+            let direct = proc.pid == Self.kernelPid ? nil : readDirect(proc.pid, now: now.uptime)
+            if let direct { readings[index] = direct } else { unreadable.append(index) }
         }
-        fillUnreadable(unreadable, into: &readings, now: now)
-        return buildSamples(kernelList, readings: readings)
+        fillUnreadable(unreadable, of: kernelList, into: &readings, now: now.uptime)
+        let samples = buildSamples(kernelList, readings: readings, extras: extras)
+        lastTick = now
+        return samples
     }
 
     // The root helper gives the same exact counters Herd reads for its own processes; top only stands in when the helper can't answer.
-    private func fillUnreadable(_ pids: [pid_t], into readings: inout [pid_t: Reading], now: UInt64) {
-        if let helped = helper.usage(for: pids) {
+    private func fillUnreadable(_ indices: [Int], of kernelList: [KernelProcess], into readings: inout [Reading?], now: UInt64) {
+        guard !indices.isEmpty else { return }
+        if let helped = helper.usage(for: indices.map { kernelList[$0].pid }) {
             if top.isActive { top.stop() }
-            for pid in pids { readings[pid] = helped[pid].map { reading($0, now: now) } }
+            for index in indices { readings[index] = helped[kernelList[index].pid].map { reading($0, now: now) } }
             return
         }
         if isDetailVisible { top.start() }
         let reported = top.usage()
-        for pid in pids { readings[pid] = reported[pid].map(Self.reading) }
+        for index in indices { readings[index] = reported[kernelList[index].pid].map(Self.reading) }
     }
 
     private static func reading(_ usage: ReportedUsage) -> Reading {
@@ -129,21 +155,27 @@ final class ProcessSampler {
         return Reading(counters: counters, reported: nil, memory: usage.footprint, threads: Int(usage.threads))
     }
 
-    private func buildSamples(_ kernelList: [KernelProcess], readings: [pid_t: Reading]) -> [ProcessSample] {
-        var nextPrevious: [ProcessKey: Counters] = [:]
+    private func buildSamples(_ kernelList: [KernelProcess], readings: [Reading?], extras: ProcessExtras) -> [ProcessSample] {
+        let keys = kernelList.map { ProcessKey(pid: $0.pid, start: $0.startTime) }
+        let reaped = reapedChildCpu(current: Set(keys))
+        var nextPrevious: [ProcessKey: Seen] = [:]
         var nextCache: [ProcessKey: StaticInfo] = [:]
         var nextPorts: [ProcessKey: [UInt16]] = [:]
+        nextPrevious.reserveCapacity(kernelList.count)
+        nextCache.reserveCapacity(kernelList.count)
         let refreshPorts = tick % Self.portRefreshTicks == 0
         tick += 1
         var samples: [ProcessSample] = []
         samples.reserveCapacity(kernelList.count)
-        for proc in kernelList {
-            let key = ProcessKey(pid: proc.pid, start: proc.startTime)
+        for (index, proc) in kernelList.enumerated() {
+            let key = keys[index]
             let info = staticCache[key].flatMap { $0.comm == proc.comm ? $0 : nil } ?? loadStaticInfo(proc)
             nextCache[key] = info
-            let reading = readings[proc.pid]
-            if let counters = reading?.counters { nextPrevious[key] = counters }
-            var sample = makeSample(proc, info: info, reading: reading, last: previous[key])
+            let reading = readings[index]
+            if let counters = reading?.counters { nextPrevious[key] = Seen(counters: counters, ppid: proc.ppid) }
+            let last = previous[key]?.counters ?? newcomerBaseline(proc)
+            var sample = makeSample(proc, info: info, reading: reading, last: last, reapedCpu: reaped[proc.pid] ?? 0)
+            Self.apply(extras, to: &sample)
             if info.tracksPorts {
                 let known = refreshPorts ? nil : ports[key]
                 nextPorts[key] = known ?? ProcessResources.listeningPorts(proc.pid)
@@ -157,7 +189,32 @@ final class ProcessSampler {
         return samples
     }
 
-    private func makeSample(_ proc: KernelProcess, info: StaticInfo, reading: Reading?, last: Counters?) -> ProcessSample {
+    // A process that started after the previous tick has run only inside this interval, so all of its counters belong
+    // to it. Without this baseline every process read 0% on its first tick and short-lived ones were never counted.
+    private func newcomerBaseline(_ proc: KernelProcess) -> Counters? {
+        guard let lastTick, proc.startTime >= lastTick.date else { return nil }
+        return .zero(at: lastTick.uptime)
+    }
+
+    // A parent's child CPU grows when it reaps a child. Children Herd already saw have had their CPU counted up to the
+    // last tick, so only the rest (children that lived and died between ticks) is added to the parent.
+    private func reapedChildCpu(current: Set<ProcessKey>) -> [pid_t: UInt64] {
+        var seenByParent: [pid_t: UInt64] = [:]
+        for (key, seen) in previous where !current.contains(key) {
+            seenByParent[seen.ppid, default: 0] += seen.counters.cpuNanos &+ seen.counters.childCpuNanos
+        }
+        return seenByParent
+    }
+
+    private static func apply(_ extras: ProcessExtras, to sample: inout ProcessSample) {
+        sample.gpuPercent = extras.gpu[sample.pid] ?? 0
+        sample.sleepAssertions = extras.sleepAssertions[sample.pid] ?? []
+        guard let rate = extras.network[sample.pid] else { return }
+        sample.netInBps = rate.inBps
+        sample.netOutBps = rate.outBps
+    }
+
+    private func makeSample(_ proc: KernelProcess, info: StaticInfo, reading: Reading?, last: Counters?, reapedCpu: UInt64) -> ProcessSample {
         var sample = ProcessSample(
             id: info.id,
             pid: proc.pid,
@@ -189,7 +246,7 @@ final class ProcessSampler {
         guard let current = reading?.counters else { return sample }
         sample.cpuSeconds = Double(current.cpuNanos) / Self.nanosPerSecond
         guard let last, current.time > last.time else { return sample }
-        Self.applyRates(from: last, to: current, on: &sample)
+        Self.applyRates(from: last, to: current, reapedCpu: reapedCpu, on: &sample)
         return sample
     }
 
@@ -201,9 +258,10 @@ final class ProcessSampler {
         sample.cpuSeconds = reported.cpuSeconds
     }
 
-    private static func applyRates(from last: Counters, to current: Counters, on sample: inout ProcessSample) {
+    private static func applyRates(from last: Counters, to current: Counters, reapedCpu: UInt64, on sample: inout ProcessSample) {
         let seconds = Double(current.time - last.time) / nanosPerSecond
-        let cpuNanos = current.cpuNanos.saturatingSub(last.cpuNanos)
+        let unseenChildren = current.childCpuNanos.saturatingSub(last.childCpuNanos).saturatingSub(reapedCpu)
+        let cpuNanos = current.cpuNanos.saturatingSub(last.cpuNanos) &+ unseenChildren
         let wakeups = current.idleWakeups.saturatingSub(last.idleWakeups)
         sample.cpuPercent = Double(cpuNanos) / nanosPerSecond / seconds * 100
         sample.energyWatts = Double(current.energyNanojoules.saturatingSub(last.energyNanojoules)) / nanosPerSecond / seconds
@@ -222,8 +280,10 @@ final class ProcessSampler {
         }
         guard status == 0 else { return nil }
         let ticks = usage.ri_user_time &+ usage.ri_system_time
+        let childTicks = usage.ri_child_user_time &+ usage.ri_child_system_time
         let counters = Counters(
             cpuNanos: UInt64(Double(ticks) * ticksToNanos),
+            childCpuNanos: UInt64(Double(childTicks) * ticksToNanos),
             energyNanojoules: usage.ri_energy_nj,
             idleWakeups: usage.ri_pkg_idle_wkups,
             diskRead: usage.ri_diskio_bytesread,
