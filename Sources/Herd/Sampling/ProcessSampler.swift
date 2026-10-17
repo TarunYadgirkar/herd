@@ -15,7 +15,8 @@ final class ProcessSampler {
         let start: Date
     }
 
-    private struct StaticInfo {
+    // A class, so the per-tick cache rebuild moves one reference per process instead of retaining each string and array.
+    private final class StaticInfo {
         let id: String
         let path: String
         let name: String
@@ -24,6 +25,17 @@ final class ProcessSampler {
         let comm: String
         let workingDirectory: String?
         let tracksPorts: Bool
+
+        init(id: String, path: String, name: String, arguments: [String], responsiblePid: pid_t, comm: String, workingDirectory: String?, tracksPorts: Bool) {
+            self.id = id
+            self.path = path
+            self.name = name
+            self.arguments = arguments
+            self.responsiblePid = responsiblePid
+            self.comm = comm
+            self.workingDirectory = workingDirectory
+            self.tracksPorts = tracksPorts
+        }
     }
 
     private struct Counters {
