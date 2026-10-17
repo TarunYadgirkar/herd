@@ -37,8 +37,8 @@ final class HistoryArchive {
 
     private var fileURL: URL { directory.appending(path: Self.fileName, directoryHint: .notDirectory) }
 
-    // `elapsed` is the awake time the frame's counters actually cover; `rateWindow` caps it for network and disk,
-    // whose rates come from short windows and would overcount if stretched across a gap.
+    // `elapsed` is the awake time the frame's counters actually cover; `rateWindow` caps it for network,
+    // whose rates come from a short window and would overcount if stretched across a gap.
     func record(_ system: SystemSnapshot, groups: [AppGroup], elapsed: TimeInterval, rateWindow: TimeInterval, at date: Date) {
         if let latest = latestRecordedDate, date < latest { rewind(to: date) }
         var point = SystemPoint(system, at: date)
@@ -48,6 +48,11 @@ final class HistoryArchive {
         hour.add(point)
         cores.append(CorePoint(system, at: date))
         cores.drop(before: date.addingTimeInterval(-Self.rawRetention))
+        recordUsage(groups, span: UsageSpan(elapsed: elapsed, rateWindow: rateWindow), at: date)
+        revision += 1
+    }
+
+    func recordUsage(groups: [AppGroup], elapsed: TimeInterval, rateWindow: TimeInterval, at date: Date) {
         recordUsage(groups, span: UsageSpan(elapsed: elapsed, rateWindow: rateWindow), at: date)
         revision += 1
     }
@@ -239,7 +244,7 @@ private extension AppUsage {
         )
     }
 
-    // CPU, energy and impact are averages over the whole elapsed span, so multiplying by it gives exact totals.
+    // CPU, energy, impact and disk are averages over the whole elapsed span, so multiplying by it gives exact totals.
     mutating func accumulate(_ group: AppGroup, span: UsageSpan, at date: Date) {
         let metrics = group.metrics
         let impact = group.processes.reduce(0) { $0 + $1.sample.energyImpact }
@@ -249,7 +254,7 @@ private extension AppUsage {
         energyWattHours += metrics.energy * span.elapsed / 3_600
         energyImpactSum += impact * span.elapsed
         networkBytes += metrics.network * span.rateWindow
-        diskBytes += metrics.disk * span.rateWindow
+        diskBytes += metrics.disk * span.elapsed
         peakMemory = max(peakMemory, Double(metrics.memory))
         lastSeen = date
     }

@@ -94,8 +94,10 @@ enum ProcessActions {
 
     @MainActor
     static func perform(_ action: ProcessAction, on group: AppGroup) -> ActionOutcome {
-        if action == .quit, let app = runningApp(for: group), app.terminate() {
-            return ActionOutcome(succeeded: 1, protectedNames: [], deniedNames: [], goneNames: [])
+        if action == .quit, let app = runningApp(for: group) {
+            // A stopped app can't handle the Quit Apple Event.
+            group.processes.map(\.sample).filter(\.isSuspended).forEach { kill($0.pid, SIGCONT); PauseLedger.forget($0) }
+            if app.terminate() { return ActionOutcome(succeeded: 1, protectedNames: [], deniedNames: [], goneNames: []) }
         }
         if action == .forceQuit, let app = runningApp(for: group) {
             app.forceTerminate()
@@ -121,6 +123,8 @@ enum ProcessActions {
                 protected.insert(sample.name)
             } else if kill(sample.pid, action.signal) == 0 {
                 succeeded += 1
+                // A stopped process keeps SIGTERM pending until it's continued.
+                if action == .quit { kill(sample.pid, SIGCONT) }
                 action == .suspend ? PauseLedger.record(sample) : PauseLedger.forget(sample)
             } else if errno == EPERM {
                 denied.insert(sample.name)

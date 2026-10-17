@@ -3,14 +3,24 @@ import SwiftUI
 struct CoreGrid: View {
     let usage: [Double]
     let history: [CorePoint]
+    let range: HistoryRange
     let readings: [ClusterReading]?
     let temperatures: [TemperatureReading]
+
+    // HistoryArchive keeps per-core samples only for its raw window.
+    private static let trendWindow: TimeInterval = 600
 
     var body: some View {
         // Apple numbers perflevel0 as the fastest cores, so the fastest cluster leads.
         let clusters = CPUTopology.clusters(coreCount: usage.count).sorted { $0.level < $1.level }
         let frequencies = readings.map { CPUTopology.frequencies(for: clusters, readings: $0) } ?? [:]
         PerformanceCard(title: "Cores") {
+            if range.seconds > Self.trendWindow {
+                Text("Trends show the last 10 min")
+                    .font(.captionText)
+                    .foregroundStyle(.secondary)
+            }
+        } content: {
             VStack(alignment: .leading, spacing: Theme.groupSpacing) {
                 ForEach(clusters) { cluster in
                     ClusterRow(
@@ -19,7 +29,7 @@ struct CoreGrid: View {
                         trend: trend(for: cluster),
                         capacity: history.count,
                         frequency: frequencies[cluster.level],
-                        celsius: hottest(in: cluster)
+                        celsius: hottest(in: cluster, isOnlyCluster: clusters.count == 1)
                     )
                     if cluster.id != clusters.last?.id { Divider() }
                 }
@@ -34,18 +44,18 @@ struct CoreGrid: View {
         }
     }
 
-    private func hottest(in cluster: CoreCluster) -> Double? {
-        let zone = SensorZone(clusterName: cluster.name)
+    private func hottest(in cluster: CoreCluster, isOnlyCluster: Bool) -> Double? {
+        guard let zone = isOnlyCluster ? SensorZone.cpu : SensorZone(clusterName: cluster.name) else { return nil }
         return temperatures.filter { $0.zone == zone }.map(\.celsius).max()
     }
 }
 
 extension SensorZone {
-    init(clusterName: String) {
+    init?(clusterName: String) {
         switch clusterName.lowercased() {
         case "super": self = .superCores
         case "performance": self = .performanceCores
-        default: self = .cpu
+        default: return nil
         }
     }
 }

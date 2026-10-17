@@ -100,7 +100,7 @@ private struct PlotView: View {
         if let yDomain {
             return AxisTicks.values(lower: yDomain.lowerBound, upper: yDomain.upperBound, isBinary: isBinary).filter(yDomain.contains)
         }
-        let values = plots.flatMap { plot in plot.points.flatMap { plot.fillStyle == nil ? [$0.high] : [$0.low, $0.high] } }
+        let values = plots.flatMap { plot in plot.points.flatMap { plot.fillStyle == nil ? [$0.high] : [$0.low, $0.high] } }.filter(\.isFinite)
         let lower = includesZero ? min(values.min() ?? 0, 0) : (values.min() ?? 0)
         let upper = includesZero ? max(values.max() ?? 0, 0) : (values.max() ?? 0)
         return AxisTicks.values(lower: lower, upper: upper, isBinary: isBinary)

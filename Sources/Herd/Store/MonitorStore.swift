@@ -25,6 +25,7 @@ final class MonitorStore {
     private static let timerTolerance = 0.1
     // A frame arriving more than this many intervals late means sampling paused or the Mac slept.
     static let gapIntervals = 3.0
+    static let alertGapFloor: TimeInterval = 30
 
     struct Headline: Equatable {
         var cpu: Double = 0
@@ -201,13 +202,17 @@ final class MonitorStore {
 
     // Forced frames cover a shorter window than the update interval, so they'd skew the evenly spaced history.
     private func apply(_ frame: Frame, recordsHistory: Bool) {
-        if hasFirstFrame && recordsHistory {
-            recordHistory(frame)
+        if hasFirstFrame {
             let elapsed = frame.elapsed ?? interval.rawValue
             let rateWindow = min(elapsed, interval.rawValue * Self.gapIntervals)
-            archive.record(frame.system, groups: frame.groups, elapsed: elapsed, rateWindow: rateWindow, at: frame.date)
-            saveHistoryIfDue(at: frame.date)
-            alerts.evaluate(frame, maxGap: interval.rawValue * Self.gapIntervals)
+            if recordsHistory {
+                recordHistory(frame)
+                archive.record(frame.system, groups: frame.groups, elapsed: elapsed, rateWindow: rateWindow, at: frame.date)
+                saveHistoryIfDue(at: frame.date)
+                alerts.evaluate(frame, maxGap: max(interval.rawValue * Self.gapIntervals, Self.alertGapFloor))
+            } else {
+                archive.recordUsage(groups: frame.groups, elapsed: elapsed, rateWindow: rateWindow, at: frame.date)
+            }
         }
         latestFrame = frame
         projectTracker.record(frame.groups, at: frame.date)

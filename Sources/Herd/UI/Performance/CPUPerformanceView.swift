@@ -23,7 +23,13 @@ struct CPUPerformanceView: View {
             yDomain: 0...1,
             contributors: .cpu
         )
-        CoreGrid(usage: system.perCoreUsage, history: cores, readings: system.power?.clusters, temperatures: system.sensors?.temperatures ?? [])
+        CoreGrid(
+            usage: system.perCoreUsage,
+            history: cores,
+            range: context.historyRange,
+            readings: system.power?.clusters,
+            temperatures: system.sensors?.temperatures ?? []
+        )
     }
 
     private var stats: [PerformanceStat] {

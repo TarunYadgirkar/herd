@@ -163,9 +163,18 @@ struct ContentView: View {
     private func groupID(containing id: String?) -> String? {
         guard let id else { return nil }
         if store.group(id: id) != nil { return id }
-        return store.groups.first { group in
-            group.processes.contains { $0.id == id } || id.hasPrefix(group.id + "/")
-        }?.id
+        if let row = Self.findRow(id, in: cache.currentRows) { return row.group.id }
+        return store.groups
+            .filter { group in group.processes.contains { $0.id == id } || id.hasPrefix(group.id + "/") }
+            .max { $0.id.count < $1.id.count }?.id
+    }
+
+    private static func findRow(_ id: String, in rows: [TableRowItem]) -> TableRowItem? {
+        for row in rows {
+            if row.id == id { return row }
+            if let children = row.children, let match = findRow(id, in: children) { return match }
+        }
+        return nil
     }
 
     private var selectedProcessID: String? {

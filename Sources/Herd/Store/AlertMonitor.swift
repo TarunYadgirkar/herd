@@ -54,16 +54,18 @@ final class AlertMonitor {
     private var criticalSince: Date?
     private var hotSince: Date?
     private var lastFrameDate: Date?
-    private var isAuthorized = false
+    // Set once the app has a notification center. Permission is not cached here: macOS drops posts while it is off,
+    // and turning it on later in System Settings takes effect at once.
+    private var canPost = false
 
     func requestAuthorization() {
+        canPost = true
         let center = UNUserNotificationCenter.current()
         let quit = UNNotificationAction(identifier: AlertAction.quit, title: "Quit App", options: [.destructive])
         let ignore = UNNotificationAction(identifier: AlertAction.ignore, title: "Don't Alert for This App")
         center.setNotificationCategories([UNNotificationCategory(identifier: AlertAction.category, actions: [quit, ignore], intentIdentifiers: [])])
-        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, error in
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             Self.log.notice("notification authorization granted=\(granted, privacy: .public) error=\(String(describing: error), privacy: .public)")
-            Task { @MainActor in self?.isAuthorized = granted }
         }
     }
 
@@ -164,7 +166,7 @@ final class AlertMonitor {
         if let last = lastAlert[key], now.timeIntervalSince(last) < Self.cooldown { return }
         lastAlert[key] = now
         firedThisFrame.append(key)
-        guard isAuthorized else { return }
+        guard canPost else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body

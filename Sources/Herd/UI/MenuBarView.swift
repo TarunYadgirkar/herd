@@ -134,6 +134,7 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage("menuBarMetric") private var metric: MetricColumn = .cpu
     @State private var frozenOrder: [String]?
+    @State private var panelOpens = 0
 
     private static let width: CGFloat = 340
     private static let rowLimit = 6
@@ -155,7 +156,10 @@ struct MenuBarView: View {
         .padding(Theme.innerPadding)
         .frame(width: Self.width)
         .animation(.easeOut(duration: 0.2), value: actions.toast)
-        .background(WindowVisibilityReader { store.setSurface("menu", visible: $0) })
+        .background(WindowVisibilityReader { visible in
+            store.setSurface("menu", visible: visible)
+            if visible { panelOpens += 1 } else { frozenOrder = nil }
+        })
         .background(MenuBarPanel.Reader())
     }
 
@@ -176,6 +180,7 @@ struct MenuBarView: View {
                 ForEach(0..<Self.rowLimit, id: \.self) { _ in PlaceholderRow() }
             }
         }
+        .id(panelOpens)
         .padding(.horizontal, -6)
         .onHover { hovering in
             frozenOrder = hovering ? rankedGroups.map(\.id) : nil

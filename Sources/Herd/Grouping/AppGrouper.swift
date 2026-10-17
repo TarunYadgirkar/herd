@@ -36,14 +36,18 @@ final class AppGrouper {
         var buckets: [String: (target: Target, members: [GroupedProcess])] = [:]
         var nextAssignments: [String: Assignment] = [:]
         nextAssignments.reserveCapacity(samples.count)
-        for sample in samples {
+        let assigned = samples.map { sample in
             let cached = assignments[sample.id].flatMap { $0.path == sample.path ? $0 : nil }
             let assignment = cached ?? assign(sample, byPid: byPid)
             nextAssignments[sample.id] = assignment
-            let member = GroupedProcess(sample: sample, title: assignment.title, subtitle: assignment.subtitle)
-            buckets[assignment.key, default: (assignment.target, [])].members.append(member)
+            return (sample, assignment)
         }
         assignments = nextAssignments
+        let canonical = canonicalBundlePaths(assigned, regularAppPids: regularAppPids)
+        for (sample, assignment) in assigned {
+            let member = GroupedProcess(sample: sample, title: assignment.title, subtitle: assignment.subtitle)
+            buckets[bucketKey(assignment, canonical: canonical), default: (assignment.target, [])].members.append(member)
+        }
         return buckets.map { key, bucket in
             var group = makeGroup(key: key, target: bucket.target, members: bucket.members, regularAppPids: regularAppPids)
             group.launcherBundle = launcher(of: bucket.target, members: bucket.members, byPid: byPid)
@@ -63,6 +67,27 @@ final class AppGrouper {
         }
         if let ownBundle { return makeAssignment(.bundle(ownBundle), title: sample.name, path: sample.path) }
         return makeAssignment(.standalone(sample.name), title: sample.name, path: sample.path)
+    }
+
+    // Two copies sharing a bundle identifier (Xcode and Xcode-beta, a dev build beside the installed app) need separate
+    // groups so Quit and Force Quit reach only one copy. One copy keeps the plain key so its history survives.
+    private func canonicalBundlePaths(_ assigned: [(ProcessSample, Assignment)], regularAppPids: Set<pid_t>) -> [String: String] {
+        var paths: [String: Set<String>] = [:]
+        var regularPaths: Set<String> = []
+        for (sample, assignment) in assigned {
+            guard case .bundle(let path) = assignment.target else { continue }
+            paths[assignment.key, default: []].insert(path)
+            if regularAppPids.contains(sample.pid) { regularPaths.insert(path) }
+        }
+        return paths.filter { $0.value.count > 1 }.mapValues { candidates in
+            let rank = { (path: String) in (regularPaths.contains(path) ? 0 : 1, path.hasPrefix("/Applications/") ? 0 : 1, path) }
+            return candidates.min { rank($0) < rank($1) }!
+        }
+    }
+
+    private func bucketKey(_ assignment: Assignment, canonical: [String: String]) -> String {
+        guard case .bundle(let path) = assignment.target, let keeper = canonical[assignment.key], keeper != path else { return assignment.key }
+        return "\(assignment.key)|\(path)"
     }
 
     private func makeAssignment(_ target: Target, title: String, subtitle: String? = nil, path: String) -> Assignment {

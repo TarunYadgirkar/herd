@@ -29,9 +29,14 @@ struct WindowVisibilityReader: NSViewRepresentable {
             let names: [Notification.Name] = [NSWindow.didChangeOcclusionStateNotification, NSWindow.willCloseNotification]
             observers = names.map { name in
                 let isClosing = name == NSWindow.willCloseNotification
-                return NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                return NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
                     MainActor.assumeIsolated {
-                        self?.onChange?(!isClosing && window.occlusionState.contains(.visible))
+                        guard let self else { return }
+                        self.onChange?(!isClosing && (window?.occlusionState.contains(.visible) ?? false))
+                        if isClosing {
+                            self.observers.forEach(NotificationCenter.default.removeObserver)
+                            self.observers = []
+                        }
                     }
                 }
             }

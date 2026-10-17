@@ -6,8 +6,10 @@ enum AxisTicks {
     private static let desiredCount = 4.0
 
     static func values(lower: Double, upper: Double, isBinary: Bool) -> [Double] {
+        guard lower.isFinite, upper.isFinite else { return [0, 1] }
         let top = upper > lower ? upper : lower + (isBinary ? 1024 : 1)
         let step = isBinary ? binaryStep(for: (top - lower) / desiredCount) : decimalStep(for: (top - lower) / desiredCount)
+        guard step.isFinite, step > 0 else { return [lower, top] }
         let start = (lower / step).rounded(.down) * step
         let end = (top / step).rounded(.up) * step
         return Array(stride(from: start, through: end + step * 0.01, by: step))

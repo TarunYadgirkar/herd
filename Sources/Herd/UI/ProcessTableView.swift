@@ -33,6 +33,7 @@ struct ProcessTableView: View, Equatable {
     @AppStorage("processTableColumns") private var columnStorage = Data()
     @State private var columnCustomization = TableColumnCustomization<TableRowItem>()
     @State private var expanded: Set<String> = []
+    @State private var collapsedWhileSearching: Set<String> = []
 
     var body: some View {
         table
@@ -53,6 +54,7 @@ struct ProcessTableView: View, Equatable {
             .onChange(of: columnCustomization) { _, customization in
                 columnStorage = (try? JSONEncoder().encode(customization)) ?? Data()
             }
+            .onChange(of: isSearching) { collapsedWhileSearching = [] }
     }
 
     @ViewBuilder
@@ -153,7 +155,7 @@ struct ProcessTableView: View, Equatable {
     }
 
     private func isOpen(_ id: String) -> Bool {
-        isSearching || expanded.contains(id)
+        isSearching ? !collapsedWhileSearching.contains(id) : expanded.contains(id)
     }
 
     // Collapsed groups hand no children to the table, so SwiftUI only diffs the rows people can actually see.
@@ -161,7 +163,13 @@ struct ProcessTableView: View, Equatable {
         Binding(
             get: { isOpen(id) },
             set: { isOpen in
-                if isOpen { expanded.insert(id) } else { expanded.remove(id) }
+                if isSearching {
+                    if isOpen { collapsedWhileSearching.remove(id) } else { collapsedWhileSearching.insert(id) }
+                } else if isOpen {
+                    expanded.insert(id)
+                } else {
+                    expanded.remove(id)
+                }
             }
         )
     }
@@ -284,7 +292,7 @@ private struct TrendCell: View {
 
     var body: some View {
         if row.role == .group {
-            let series = history(row.id).series(for: column)
+            let series = history(row.group.id).series(for: column)
             Sparkline(values: series.values, color: color(series.latest), ceiling: column.trendFloor)
                 .frame(height: 20)
                 .padding(.vertical, 2)

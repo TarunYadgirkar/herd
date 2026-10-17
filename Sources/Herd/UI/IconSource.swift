@@ -99,6 +99,7 @@ enum IconSource {
     private static var appPaths: [String: String?] = [:]
     private static var ownIcons: [String: Bool] = [:]
     private static var namedApps: [String: String?] = [:]
+    private static var settingTypes: [String: Bool] = [:]
 
     static func reference(for group: AppGroup) -> Reference? {
         if let bundle = group.bundlePath, hasOwnIcon(bundle) { return .file(bundle) }
@@ -137,7 +138,9 @@ enum IconSource {
         switch source {
         case .setting(let name):
             let identifier = settingPrefix + name
-            return UTType(identifier) == nil ? nil : .type(identifier)
+            let isValid = settingTypes[name] ?? (UTType(identifier) != nil)
+            settingTypes[name] = isValid
+            return isValid ? .type(identifier) : nil
         case .app(let bundleID):
             if appPaths[bundleID] == nil { appPaths[bundleID] = appPath(bundleID) }
             return appPaths[bundleID]?.map { .file($0) }

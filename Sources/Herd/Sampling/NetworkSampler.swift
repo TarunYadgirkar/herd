@@ -156,7 +156,10 @@ final class NetworkSampler: @unchecked Sendable {
         guard hasHeader, let (pid, bytesIn, bytesOut) = Self.parseRow(line) else { return }
         let existing = currentBlock[pid] ?? (0, 0)
         currentBlock[pid] = (existing.inBps + bytesIn, existing.outBps + bytesOut)
-        guard !isBaselineBlock else { return }
+        if isBaselineBlock {
+            previousTotals[pid] = (currentBlock[pid] ?? (0, 0), Date())
+            return
+        }
         publishLocked(pid, totals: currentBlock[pid] ?? (0, 0), at: Date())
     }
 
@@ -180,9 +183,7 @@ final class NetworkSampler: @unchecked Sendable {
             hasHeader = true
         }
         guard hasHeader else { return }
-        let now = Date()
         if isBaselineBlock {
-            previousTotals = currentBlock.mapValues { ($0, now) }
             isBaselineBlock = false
             return
         }

@@ -94,7 +94,10 @@ final class RootHelper: @unchecked Sendable {
         lock.withLock {
             guard Date().timeIntervalSince(failedAt) >= Self.retryAfterFailure else { return nil }
             let connection = connection ?? makeConnectionLocked()
-            return connection.remoteObjectProxyWithErrorHandler { [weak self] _ in self?.connectionFailed() } as? HerdHelperProtocol
+            return connection.remoteObjectProxyWithErrorHandler { [weak self, weak connection] _ in
+                guard let connection else { return }
+                self?.connectionFailed(connection)
+            } as? HerdHelperProtocol
         }
     }
 
@@ -102,14 +105,18 @@ final class RootHelper: @unchecked Sendable {
         let next = NSXPCConnection(machServiceName: HelperIdentity.machService, options: .privileged)
         next.remoteObjectInterface = NSXPCInterface(with: HerdHelperProtocol.self)
         next.setCodeSigningRequirement(helperRequirement)
-        next.invalidationHandler = { [weak self] in self?.connectionFailed() }
+        next.invalidationHandler = { [weak self, weak next] in
+            guard let next else { return }
+            self?.connectionFailed(next)
+        }
         next.resume()
         connection = next
         return next
     }
 
-    private func connectionFailed() {
-        lock.withLock { connection = nil }
+    private func connectionFailed(_ failed: NSXPCConnection) {
+        lock.withLock { if connection === failed { connection = nil } }
+        failed.invalidate()
     }
 
     private func tearDownLocked() {

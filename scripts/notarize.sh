@@ -15,7 +15,7 @@ ZIP="$ROOT/build/Herd.zip"
 DMG="$ROOT/build/Herd.dmg"
 PROFILE="${HERD_NOTARY_PROFILE:-herd-notary}"
 
-IDENTITY="$(security find-identity -v -p codesigning | grep '"Developer ID Application: ' | head -1 | sed -E 's/.*"(.*)"/\1/' || true)"
+IDENTITY="$(security find-identity -v -p codesigning | grep '"Developer ID Application: .*(5AKJYZ7USP)"' | head -1 | sed -E 's/.*"(.*)"/\1/' || true)"
 if [[ -z "$IDENTITY" ]]; then
   echo "No Developer ID Application certificate for team 5AKJYZ7USP. Create one in Xcode first (see the top of this script)." >&2
   exit 1
