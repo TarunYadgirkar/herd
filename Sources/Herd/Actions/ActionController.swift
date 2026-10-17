@@ -154,8 +154,10 @@ final class ActionController {
         }
     }
 
+    // Quit only asks a program to exit and apps still prompt to save, so it runs at once.
+    // Force Quit and Suspend can lose work, so they still confirm.
     private func ask(_ pending: PendingAction) {
-        if pending.action == .resume {
+        if pending.action == .resume || pending.action == .quit {
             run(pending)
         } else {
             self.pending = pending

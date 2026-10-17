@@ -208,9 +208,7 @@ struct MenuBarView: View {
         openMain()
     }
 
-    // A regular app quits through its own Quit command, which is safe to send in one click. Anything else gets signalled, so it asks first.
     private func quit(_ group: AppGroup) {
-        guard ProcessActions.hasRunningApp(group) || ConfirmAlert.confirm(.quit, group) else { return }
         actions.runConfirmed(.quit, on: group)
     }
 

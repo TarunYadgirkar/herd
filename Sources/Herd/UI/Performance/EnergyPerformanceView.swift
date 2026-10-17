@@ -29,12 +29,15 @@ struct EnergyPerformanceView: View {
 
     private var powerSeries: [ChartSeries] {
         let points = context.points
-        let stack = ChartSeries.stacked([
+        var layers = [
             ChartLayer(name: "CPU", color: ChartPalette.cpuPower, values: points.map { $0.cpuWatts ?? 0 }),
             ChartLayer(name: "GPU", color: ChartPalette.gpuPower, values: points.map { $0.gpuWatts ?? 0 }),
             ChartLayer(name: "Neural Engine", color: ChartPalette.anePower, values: points.map { $0.aneWatts ?? 0 }),
-            ChartLayer(name: "Memory", color: ChartPalette.dramPower, values: points.map { $0.dramWatts ?? 0 }),
-        ])
+        ]
+        if points.contains(where: { $0.dramWatts != nil }) {
+            layers.append(ChartLayer(name: "Memory", color: ChartPalette.dramPower, values: points.map { $0.dramWatts ?? 0 }))
+        }
+        let stack = ChartSeries.stacked(layers)
         let system = ChartSeries(name: "Whole Mac", color: ChartPalette.total, values: points.map(\.systemWatts), fill: .none, lineWidth: 1.25)
         return system.hasData ? stack + [system] : stack
     }
@@ -43,13 +46,14 @@ struct EnergyPerformanceView: View {
         let used = context.total { point in
             point.systemWatts ?? point.cpuWatts.map { $0 + (point.gpuWatts ?? 0) + (point.aneWatts ?? 0) }
         }
+        let memory = power.dramWatts.map { PerformanceStat(label: "Memory", value: Format.watts($0), swatch: ChartPalette.dramPower) }
         return [
             PerformanceStat(label: "CPU", value: Format.watts(power.cpuWatts), swatch: ChartPalette.cpuPower),
             PerformanceStat(label: "GPU", value: Format.watts(power.gpuWatts), swatch: ChartPalette.gpuPower),
             PerformanceStat(label: "Neural Engine", value: Format.watts(power.aneWatts), swatch: ChartPalette.anePower),
-            PerformanceStat(label: "Memory", value: Format.watts(power.dramWatts), swatch: ChartPalette.dramPower),
+            memory,
             PerformanceStat(label: "Used", value: PerformanceFormat.wattHours(used / Self.secondsPerHour)),
-        ]
+        ].compactMap { $0 }
     }
 }
 

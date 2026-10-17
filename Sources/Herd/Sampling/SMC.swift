@@ -134,7 +134,8 @@ final class SMC {
     private func decode(type: SMCKey, size: Int) -> Double? {
         switch type {
         case Self.float32 where size == 4:
-            return Double(Float(bitPattern: output.load(fromByteOffset: SMCLayout.bytes, as: UInt32.self)))
+            let value = Double(Float(bitPattern: output.load(fromByteOffset: SMCLayout.bytes, as: UInt32.self)))
+            return value.isFinite ? value : nil
         case Self.sp78 where size == 2:
             return Double(Int16(bitPattern: UInt16(bigEndian(2)))) / 256
         case Self.fpe2 where size == 2:

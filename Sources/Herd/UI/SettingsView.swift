@@ -180,7 +180,7 @@ private struct RootHelperRow: View {
     }
 }
 
-// Automatic hides which mode is running, so the label carries the live one: a scope for Precise, a leaf for Efficient.
+// Automatic hides which mode is running, so the label carries the live one: a scope for Full, a leaf for Light.
 private struct PowerModeLabel: View {
     let effort: SamplingEffort
     let mode: PowerMode

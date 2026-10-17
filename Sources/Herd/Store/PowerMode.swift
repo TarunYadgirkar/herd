@@ -1,24 +1,25 @@
 import Foundation
 import IOKit.ps
 
-// Herd costs about 5% of a core with its window open at the old 2-second default. Precise spends more to catch short
-// spikes; Efficient samples less often and drops per-app network tracking while no Herd window is open.
+// Measured with the window open: Full (1-second samples) costs about 5.5% of a core, Light (5-second samples) about 2%,
+// close to Activity Monitor's 1.5%. Light is the default; Full spends more to catch short spikes.
 enum PowerMode: String, CaseIterable, Identifiable {
-    case automatic, precise, efficient
+    case efficient, precise, automatic
 
     static let key = "powerMode"
+    static let standard = PowerMode.efficient
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .automatic: "Automatic"
-        case .precise: "Precise"
-        case .efficient: "Efficient"
+        case .precise: "Full"
+        case .efficient: "Light"
         }
     }
 
-    // Automatic follows the Mac: full detail on the power adapter, light sampling on battery or in Low Power Mode.
+    // Automatic follows the Mac: Full on the power adapter, Light on battery or in Low Power Mode.
     func effort(onBattery: Bool, lowPowerMode: Bool) -> SamplingEffort {
         switch self {
         case .precise: .precise
@@ -38,13 +39,13 @@ enum SamplingEffort: Sendable, Equatable {
         }
     }
 
-    // Per-app network comes from a long-running nettop. Efficient stops it while no window shows per-app numbers.
+    // Per-app network comes from a long-running nettop. Light stops it while no window shows per-app numbers.
     var tracksNetworkWhileHidden: Bool { self == .precise }
 
     var title: String {
         switch self {
-        case .precise: "Precise"
-        case .efficient: "Efficient"
+        case .precise: "Full"
+        case .efficient: "Light"
         }
     }
 

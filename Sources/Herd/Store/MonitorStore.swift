@@ -71,7 +71,7 @@ final class MonitorStore {
     @ObservationIgnored private var lastHistorySave = Date()
 
     init() {
-        let mode = UserDefaults.standard.string(forKey: PowerMode.key).flatMap(PowerMode.init) ?? .automatic
+        let mode = UserDefaults.standard.string(forKey: PowerMode.key).flatMap(PowerMode.init) ?? PowerMode.standard
         powerMode = mode
         effort = mode.effort(onBattery: PowerSource.isOnBattery, lowPowerMode: PowerSource.isLowPowerMode)
     }
@@ -102,7 +102,7 @@ final class MonitorStore {
         Task { await engine.stop() }
     }
 
-    // Checked once per tick: unplugging or turning on Low Power Mode switches Automatic to Efficient by the next sample.
+    // Checked once per tick: unplugging or turning on Low Power Mode switches Automatic to Light by the next sample.
     private func updateEffort() {
         let next = powerMode.effort(onBattery: PowerSource.isOnBattery, lowPowerMode: PowerSource.isLowPowerMode)
         guard next != effort else { return }

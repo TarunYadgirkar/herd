@@ -14,7 +14,8 @@ struct PowerReading: Sendable, Equatable {
     var cpuWatts: Double = 0
     var gpuWatts: Double = 0
     var aneWatts: Double = 0
-    var dramWatts: Double = 0
+    // Nil when the chip reports no memory energy; macOS 27 leaves the DRAM counter at zero on some Macs.
+    var dramWatts: Double?
     var systemWatts: Double?
     var clusters: [ClusterReading] = []
     var gpuFrequencyMHz: Double = 0

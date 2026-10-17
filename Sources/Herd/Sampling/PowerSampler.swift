@@ -49,7 +49,7 @@ final class PowerSampler {
             accumulate(channel, into: &tally, seconds: seconds, api: api)
         }
         let energy = resolveEnergy(tally)
-        var reading = PowerReading(cpuWatts: energy.cpu, gpuWatts: energy.gpu, aneWatts: energy.ane, dramWatts: energy.dram)
+        var reading = PowerReading(cpuWatts: energy.cpu, gpuWatts: energy.gpu, aneWatts: energy.ane, dramWatts: energy.dram > 0 ? energy.dram : nil)
         reading.clusters = clusterReadings(tally.clusters)
         guard let gpu = layout?.gpu else { return reading }
         reading.gpuFrequencyMHz = tally.gpu.frequencyMHz
