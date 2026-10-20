@@ -10,14 +10,14 @@ struct BatteryPerformanceView: View {
             PerformanceHeader(
                 title: "Battery",
                 value: Format.percent(percent),
-                symbol: BatteryGlyph.symbol(percent: percent, isPowered: isCharging || isOnAC),
-                symbolTint: BatteryGlyph.tint(percent: percent, isCharging: isCharging, isOnAC: isOnAC),
+                symbol: BatteryGlyph.symbol(percent: percent, flow: flow),
+                symbolTint: BatteryGlyph.tint(percent: percent, flow: flow),
                 symbolLabel: status,
-                caption: remaining.map { Text($0) },
+                caption: Text(status),
                 stats: headlineStats
             )
             PerformanceChart(
-                title: "Charge",
+                title: "Charge level",
                 series: [ChartSeries(name: "Charge", color: ChartPalette.charge, values: context.values { $0.batteryPercent })],
                 unit: .percent,
                 context: context,
@@ -25,11 +25,12 @@ struct BatteryPerformanceView: View {
                 height: 180
             )
             PerformanceChart(
-                title: "Power flow",
-                series: flowSeries,
+                title: "Battery power",
+                series: BatteryPowerSeries.series(context.points.map(\.batteryWatts)),
                 unit: .watts,
                 context: context,
-                height: 180
+                height: 180,
+                emptyMessage: BatteryPowerSeries.emptyMessage(context.points.map(\.batteryWatts))
             )
             if let details = system.batteryDetails {
                 BatteryDetailsCard(details: details)
@@ -39,31 +40,13 @@ struct BatteryPerformanceView: View {
         }
     }
 
-    private var isCharging: Bool {
-        system.batteryDetails?.isCharging ?? system.battery?.isCharging ?? false
-    }
-
-    private var isOnAC: Bool {
-        system.batteryDetails?.isOnAC ?? system.battery?.isOnAC ?? false
-    }
-
-    private var remaining: String? {
-        (system.batteryDetails?.minutesRemaining ?? system.battery?.minutesRemaining)
-            .map { Format.duration(TimeInterval($0 * 60)) }
-    }
-
-    private var flowSeries: [ChartSeries] {
-        let watts = context.points.map(\.batteryWatts)
-        return [
-            ChartSeries(name: "Charge", color: ChartPalette.charging, values: watts.map { $0.map { max($0, 0) } }, hidesZeroInCallout: true),
-            ChartSeries(name: "Drain", color: ChartPalette.draining, values: watts.map { $0.map { max(-$0, 0) } }, direction: -1, hidesZeroInCallout: true),
-        ]
+    private var flow: BatteryFlow {
+        if let details = system.batteryDetails { return BatteryFlow(details) }
+        return BatteryFlow(isCharging: system.battery?.isCharging ?? false, isOnAC: system.battery?.isOnAC ?? false, watts: nil)
     }
 
     private var status: String {
-        if isCharging { return remaining.map { "Charging, full in \($0)" } ?? "Charging" }
-        if isOnAC { return "Plugged in, not charging" }
-        return remaining.map { "On battery, \($0) left" } ?? "On battery"
+        flow.summary(minutesRemaining: system.batteryDetails?.minutesRemaining ?? system.battery?.minutesRemaining)
     }
 
     private var headlineStats: [PerformanceStat] {
@@ -71,9 +54,40 @@ struct BatteryPerformanceView: View {
         return [
             BatteryHealth.stat(details),
             details.cycleCount.map { PerformanceStat(label: "Cycles", value: "\($0)") },
-            details.watts.map { PerformanceStat(label: "Power", value: Format.watts($0), tint: $0 >= 0 ? Theme.good : nil) },
+            flow.watts.map { PerformanceStat(label: flow.powerLabel, value: Format.watts($0), tint: flow.isCharging ? Theme.good : nil) },
         ]
         .compactMap { $0 }
+    }
+}
+
+// Both directions plot upward from 0 W, told apart by color, and each line only appears while that direction is happening.
+enum BatteryPowerSeries {
+    static func series(_ watts: [Double?]) -> [ChartSeries] {
+        [
+            ChartSeries(
+                name: "Charging", color: ChartPalette.charging, values: values(watts, sign: 1),
+                hidesZeroInCallout: true, breaksAtMissingValues: true
+            ),
+            ChartSeries(
+                name: "Draining", color: ChartPalette.draining, values: values(watts, sign: -1),
+                hidesZeroInCallout: true, breaksAtMissingValues: true
+            ),
+        ]
+    }
+
+    static func emptyMessage(_ watts: [Double?]) -> String {
+        watts.contains { $0 != nil } ? "Not charging or draining" : PerformanceCopy.unavailable
+    }
+
+    // Samples next to a run read 0 W, so each run rises from and returns to the axis instead of floating.
+    static func values(_ watts: [Double?], sign: Double) -> [Double?] {
+        let magnitudes = watts.map { $0.map { $0 * sign } }
+        let isActive = magnitudes.map { ($0 ?? 0) >= BatteryFlow.idleWatts }
+        return magnitudes.indices.map { index in
+            if isActive[index] { return magnitudes[index] }
+            let touchesRun = (index > 0 && isActive[index - 1]) || (index + 1 < isActive.count && isActive[index + 1])
+            return touchesRun && magnitudes[index] != nil ? 0 : nil
+        }
     }
 }
 
@@ -81,8 +95,8 @@ private enum BatteryGlyph {
     private static let lowPercent = 20.0
     private static let criticalPercent = 10.0
 
-    static func symbol(percent: Double, isPowered: Bool) -> String {
-        if isPowered { return "battery.100percent.bolt" }
+    static func symbol(percent: Double, flow: BatteryFlow) -> String {
+        if flow.isCharging { return "battery.100percent.bolt" }
         switch percent {
         case ..<13: return "battery.0percent"
         case ..<38: return "battery.25percent"
@@ -92,9 +106,13 @@ private enum BatteryGlyph {
         }
     }
 
-    static func tint(percent: Double, isCharging: Bool, isOnAC: Bool) -> Color {
-        if isCharging { return Theme.good }
-        if isOnAC { return .secondary }
+    static func tint(percent: Double, flow: BatteryFlow) -> Color {
+        switch flow {
+        case .charging: return Theme.good
+        case .pluggedInDraining: return Theme.warning
+        case .pluggedInIdle: return .secondary
+        case .draining: break
+        }
         if percent <= criticalPercent { return Theme.critical }
         if percent <= lowPercent { return Theme.warning }
         return .secondary
@@ -137,7 +155,7 @@ private struct BatteryDetailsCard: View {
             ("Max capacity", details.maxCapacityMAh.map(Self.milliampHours)),
             ("Design capacity", details.designCapacityMAh.map(Self.milliampHours)),
             ("Voltage", details.voltage.map { String(format: "%.2f V", $0) }),
-            ("Current", details.amperage.map { String(format: "%.2f A", $0) }),
+            ("Current", details.amperage.map { String(format: "%.2f A", abs($0)) }),
             ("Charger", details.adapterWatts.map { String(format: "%.0f W", $0) }),
             ("Temperature", details.celsius.map(PerformanceFormat.celsius)),
         ]

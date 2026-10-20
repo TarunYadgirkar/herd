@@ -24,6 +24,7 @@ struct ChartSeries: Identifiable {
     var lineWidth: CGFloat = 1.5
     var direction: Double = 1
     var hidesZeroInCallout = false
+    var breaksAtMissingValues = false
 
     var id: String { name }
 
@@ -33,10 +34,14 @@ struct ChartSeries: Identifiable {
 
     // Each contiguous run gets its own series key, so Swift Charts breaks the line across gaps instead of bridging them.
     func plotPoints(dates: [Date], segments: [Int]) -> [PlotPoint] {
-        zip(dates, values).enumerated().compactMap { index, pair in
-            guard let value = pair.1 else { return nil }
+        var run = 0
+        return zip(dates, values).enumerated().compactMap { index, pair in
+            guard let value = pair.1 else {
+                if breaksAtMissingValues { run += 1 }
+                return nil
+            }
             let low = baseline?[index] ?? 0
-            return PlotPoint(date: pair.0, low: low * direction, high: (low + value) * direction, series: "\(name)#\(segments[index])")
+            return PlotPoint(date: pair.0, low: low * direction, high: (low + value) * direction, series: "\(name)#\(segments[index]).\(run)")
         }
     }
 

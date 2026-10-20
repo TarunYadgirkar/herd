@@ -10,9 +10,10 @@ struct PerformanceChart: View {
     var includesZero = true
     var height: CGFloat = 200
     var contributors: ContributorMetric?
+    var emptyMessage = PerformanceCopy.unavailable
 
     var body: some View {
-        ChartCard(title: title, legend: series.count > 1 ? series.map(LegendItem.init) : []) {
+        ChartCard(title: title, legend: series.count > 1 ? series.filter(\.hasData).map(LegendItem.init) : []) {
             content
         }
     }
@@ -22,7 +23,7 @@ struct PerformanceChart: View {
         if context.isCollecting {
             ChartMessage(text: PerformanceCopy.collecting, height: height)
         } else if !series.contains(where: \.hasData) {
-            ChartMessage(text: PerformanceCopy.unavailable, height: height)
+            ChartMessage(text: emptyMessage, height: height)
         } else {
             PlotView(
                 plots: series.map { SeriesPlot(series: $0, points: $0.plotPoints(dates: context.dates, segments: context.segments)) },
