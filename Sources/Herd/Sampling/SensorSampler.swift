@@ -311,7 +311,10 @@ extension SensorSampler {
         if !cores.isEmpty {
             return numbered(cores, "Core").compactMap { named($0.key, $0.label, .cpu, .cpu) }
         }
-        return SensorCatalog.intelCPU.lazy.compactMap { named($0.key, $0.name, .cpu, .cpu) }.first.map { [$0] } ?? []
+        for entry in SensorCatalog.intelCPU {
+            if let channel = named(entry.key, entry.name, .cpu, .cpu) { return [channel] }
+        }
+        return []
         #else
         return rawChannels(discovered, prefix: SensorCatalog.cpuFallbackPrefix, role: .cpu, zone: .cpu)
         #endif
