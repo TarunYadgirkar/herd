@@ -69,6 +69,7 @@ final class MonitorStore {
     @ObservationIgnored private var liveSystemHistory = SystemHistory()
     @ObservationIgnored private var workspaceObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var lastHistorySave = Date()
+    @ObservationIgnored private var ticksSinceRedraw = 0
 
     init() {
         let mode = UserDefaults.standard.string(forKey: PowerMode.key).flatMap(PowerMode.init) ?? PowerMode.standard
@@ -232,7 +233,8 @@ final class MonitorStore {
         dockGraph.update(cpu: frame.system.cpuTotal)
         let nextHeadline = Headline(cpu: frame.system.cpuTotal, memoryUsed: frame.system.memoryUsed)
         if nextHeadline != headline { headline = nextHeadline }
-        if isDetailVisible { publishDetail() }
+        ticksSinceRedraw += 1
+        if isDetailVisible { publishDetail(includingApps: ticksSinceRedraw >= effort.ticksPerRedraw) }
         hasFirstFrame = true
     }
 
@@ -242,12 +244,14 @@ final class MonitorStore {
         archive.save()
     }
 
-    private func publishDetail() {
+    private func publishDetail(includingApps: Bool = true) {
         guard let latestFrame else { return }
         system = latestFrame.system
+        historyRevision += 1
+        guard includingApps else { return }
+        ticksSinceRedraw = 0
         groups = latestFrame.groups
         processCount = latestFrame.processCount
-        historyRevision += 1
         projectActivity = projectTracker.ledger
     }
 

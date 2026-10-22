@@ -43,6 +43,9 @@ enum SamplingEffort: Sendable, Equatable {
     var tracksNetworkWhileHidden: Bool { self == .precise }
     // Light matches nettop's window to its own tick; Full keeps 2 s windows, since 1 s ones make nettop wake twice as often.
     var networkInterval: TimeInterval { self == .precise ? 2 : interval.rawValue }
+    // Redrawing the app table is most of Full's cost with the window open, so apps refresh every other sample.
+    // System graphs, history and alerts still take every 1 s sample.
+    var ticksPerRedraw: Int { self == .precise ? 2 : 1 }
 
     var title: String {
         switch self {
