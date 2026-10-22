@@ -19,8 +19,15 @@ final class PowerSampler {
     private var clpcZeroStreak = 0
     private(set) var energySource: EnergySource = .clpc
 
+    // Intel Macs publish no IOReport energy or cluster channels; their chip power comes from the SMC instead (SensorSampler).
+    var isAvailable: Bool { subscription != nil }
+
     init() {
+        #if arch(x86_64)
+        let api: IOReportAPI? = nil
+        #else
         let api = IOReportAPI()
+        #endif
         self.api = api
         subscription = api.flatMap(IOReportSubscription.init)
         if subscription?.hasCLPC != true { energySource = .energyModel }

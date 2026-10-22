@@ -49,8 +49,6 @@ final class SMC {
     private static let keyCountKey = SMCKey("#KEY")
 
     private static let float32 = SMCKey("flt ")
-    private static let sp78 = SMCKey("sp78")
-    private static let fpe2 = SMCKey("fpe2")
     private static let ui8 = SMCKey("ui8 ")
     private static let ui16 = SMCKey("ui16")
     private static let ui32 = SMCKey("ui32")
@@ -136,14 +134,22 @@ final class SMC {
         case Self.float32 where size == 4:
             let value = Double(Float(bitPattern: output.load(fromByteOffset: SMCLayout.bytes, as: UInt32.self)))
             return value.isFinite ? value : nil
-        case Self.sp78 where size == 2:
-            return Double(Int16(bitPattern: UInt16(bigEndian(2)))) / 256
-        case Self.fpe2 where size == 2:
-            return Double(bigEndian(2)) / 4
         case Self.ui8, Self.ui16, Self.ui32:
             return Double(bigEndian(min(size, 4)))
         default:
-            return nil
+            return size == 2 ? Self.fixedPoint(type: type, raw: UInt16(bigEndian(2))) : nil
+        }
+    }
+
+    // Intel Macs report most values as two-byte fixed point: "sp78" is signed with 8 fraction bits, "fpe2" unsigned with 2.
+    // The type's last character is the fraction width in hex, so one rule covers sp78, sp96, fpe2 and the rest.
+    static func fixedPoint(type: SMCKey, raw: UInt16) -> Double? {
+        let name = type.name
+        guard name.count == 4, let fraction = Int(String(name.suffix(1)), radix: 16) else { return nil }
+        switch name.prefix(2) {
+        case "sp": return Double(Int16(bitPattern: raw)) / Double(1 << fraction)
+        case "fp": return Double(raw) / Double(1 << fraction)
+        default: return nil
         }
     }
 }

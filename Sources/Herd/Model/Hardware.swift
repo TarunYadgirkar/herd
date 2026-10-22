@@ -21,8 +21,18 @@ struct PowerReading: Sendable, Equatable {
     var gpuFrequencyMHz: Double = 0
     var gpuMaxFrequencyMHz: Double = 0
     var gpuActiveFraction: Double = 0
+    var hasNeuralEngine = true
 
     var packageWatts: Double { cpuWatts + gpuWatts + aneWatts }
+}
+
+extension PowerReading {
+    // Intel Macs have no IOReport energy counters, so the SMC's package and graphics power stand in. There is no Neural Engine.
+    init?(smc sensors: SensorReading) {
+        guard let cpu = sensors.cpuWatts else { return nil }
+        self.init(cpuWatts: cpu, gpuWatts: sensors.gpuWatts ?? 0)
+        hasNeuralEngine = false
+    }
 }
 
 struct FanReading: Sendable, Equatable, Identifiable {
@@ -60,6 +70,9 @@ struct SensorReading: Sendable, Equatable {
     var palmRestCelsius: Double?
     var systemWatts: Double?
     var adapterInWatts: Double?
+    // Intel Macs only: chip power from the SMC, used when IOReport has no energy counters.
+    var cpuWatts: Double?
+    var gpuWatts: Double?
     var fans: [FanReading] = []
     var temperatures: [TemperatureReading] = []
 }

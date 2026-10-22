@@ -34,14 +34,16 @@ struct GPUPerformanceView: View {
     }
 
     private var stats: [PerformanceStat] {
-        guard let power = system.power else {
-            return [PerformanceStat(label: "Peak", value: context.peak(\.gpu).map { Format.percent($0 * 100) } ?? PerformanceFormat.missing)]
-        }
+        let peak = PerformanceStat(label: "Peak", value: context.peak(\.gpu).map { Format.percent($0 * 100) } ?? PerformanceFormat.missing)
+        guard let power = system.power else { return [peak] }
+        let wattage = PerformanceStat(label: "Power", value: Format.watts(power.gpuWatts))
+        // Intel Macs have no GPU frequency table, so clocks are left out rather than shown as zero.
+        guard power.gpuMaxFrequencyMHz > 0 else { return [wattage, peak] }
         return [
             PerformanceStat(label: "Frequency", value: PerformanceFormat.megahertz(power.gpuFrequencyMHz)),
             PerformanceStat(label: "Max", value: PerformanceFormat.megahertz(power.gpuMaxFrequencyMHz)),
-            PerformanceStat(label: "Power", value: Format.watts(power.gpuWatts)),
-            PerformanceStat(label: "Peak", value: context.peak(\.gpu).map { Format.percent($0 * 100) } ?? PerformanceFormat.missing),
+            wattage,
+            peak,
         ]
     }
 }

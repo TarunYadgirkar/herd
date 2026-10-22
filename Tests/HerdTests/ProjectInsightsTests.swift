@@ -154,7 +154,7 @@ private func ledger(idle: [pid_t: TimeInterval], now: Date = Date(timeIntervalSi
     ])
 
     @Test func stopsOrphansAndLongIdleCopiesOnly() throws {
-        let result = report([copies], ledger: ledger(idle: [600: 31 * 60, 601: 10 * 60, 602: 0, 603: 0, 604: 0]))
+        let result = report([copies], ledger: ledger(idle: [600: 31.0 * 60, 601: 10.0 * 60, 602: 0, 603: 0, 604: 0]))
         let set = try #require(result.duplicates.first)
         let safe = Set(set.copies.filter(\.isSafeToStop).map(\.root.pid))
         #expect(safe == [600, 602])

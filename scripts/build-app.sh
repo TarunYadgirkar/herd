@@ -30,21 +30,43 @@ signing_identity() {
   echo "-"
 }
 
+# Universal by default so Intel Macs run it too. HERD_ARCHS=arm64 builds one slice for a quicker local build.
+read -r -a ARCHS <<<"${HERD_ARCHS:-arm64 x86_64}"
+
 cd "$ROOT"
-swift build -c release --arch arm64 --product Herd
-swift build -c release --arch arm64 --product HerdHelper
-BIN_DIR="$(swift build -c release --arch arm64 --show-bin-path)"
+# SwiftPM can put every architecture in the same bin path, so each slice is copied out before the next build replaces it.
+SLICES="$ROOT/build/slices"
+rm -rf "$SLICES"
+BIN_DIRS=()
+for arch in "${ARCHS[@]}"; do
+  swift build -c release --arch "$arch" --product Herd
+  swift build -c release --arch "$arch" --product HerdHelper
+  bin="$(swift build -c release --arch "$arch" --show-bin-path)"
+  mkdir -p "$SLICES/$arch"
+  cp "$bin/Herd" "$bin/HerdHelper" "$SLICES/$arch/"
+  BIN_DIRS+=("$SLICES/$arch")
+done
+
+# Joins each architecture's build of a product into one binary.
+universal() {
+  lipo -create "${BIN_DIRS[@]/%//$1}" -output "$2"
+}
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/LaunchDaemons"
-cp "$BIN_DIR/Herd" "$APP/Contents/MacOS/Herd"
-cp "$BIN_DIR/HerdHelper" "$APP/Contents/MacOS/HerdHelper"
+universal Herd "$APP/Contents/MacOS/Herd"
+universal HerdHelper "$APP/Contents/MacOS/HerdHelper"
 cp "Resources/LaunchDaemons/$HELPER_ID.plist" "$APP/Contents/Library/LaunchDaemons/"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
-xcrun actool Resources/Assets.xcassets --compile "$APP/Contents/Resources" \
-  --platform macosx --minimum-deployment-target 15.0 --output-format human-readable-text >/dev/null
+# actool ships only with Xcode; without it the app falls back to the system accent color.
+if xcrun --find actool >/dev/null 2>&1; then
+  xcrun actool Resources/Assets.xcassets --compile "$APP/Contents/Resources" \
+    --platform macosx --minimum-deployment-target 15.0 --output-format human-readable-text >/dev/null
+else
+  echo "actool not found (no Xcode); skipping the asset catalog, so the accent color is the system default." >&2
+fi
 
 IDENTITY="$(signing_identity)"
 SIGN_FLAGS=(--force --sign "$IDENTITY")
@@ -53,6 +75,7 @@ codesign "${SIGN_FLAGS[@]}" --identifier "$HELPER_ID" "$APP/Contents/MacOS/HerdH
 codesign "${SIGN_FLAGS[@]}" "$APP" >/dev/null
 codesign --verify --strict --deep "$APP"
 echo "Signed with: $IDENTITY"
+echo "Architectures: $(lipo -archs "$APP/Contents/MacOS/Herd")"
 echo "$APP"
 
 if [[ "${1:-}" == "--install" ]]; then
