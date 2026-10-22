@@ -29,7 +29,9 @@ fi
 HERD_ARCHS="arm64 x86_64" HERD_SIGN_IDENTITY="$IDENTITY" "$ROOT/scripts/build-app.sh"
 # The release must open on Intel and Apple Silicon alike.
 for binary in Herd HerdHelper; do
-  lipo "$APP/Contents/MacOS/$binary" -verify_arch arm64 x86_64 || { echo "$binary is not universal" >&2; exit 1; }
+  for arch in arm64 x86_64; do
+    lipo "$APP/Contents/MacOS/$binary" -verify_arch "$arch" || { echo "$binary has no $arch slice" >&2; exit 1; }
+  done
 done
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
