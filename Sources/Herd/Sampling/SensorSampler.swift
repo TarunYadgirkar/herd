@@ -311,8 +311,8 @@ extension SensorSampler {
         if !cores.isEmpty {
             return numbered(cores, "Core").compactMap { named($0.key, $0.label, .cpu, .cpu) }
         }
-        for sensor in SensorCatalog.intelCPU {
-            if let channel = named(sensor.key, sensor.name, .cpu, .cpu) { return [channel] }
+        for entry in SensorCatalog.intelCPU {
+            if let channel = named(entry.key, entry.name, .cpu, .cpu) { return [channel] }
         }
         return []
         #else

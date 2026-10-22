@@ -34,11 +34,17 @@ signing_identity() {
 read -r -a ARCHS <<<"${HERD_ARCHS:-arm64 x86_64}"
 
 cd "$ROOT"
+# SwiftPM can put every architecture in the same bin path, so each slice is copied out before the next build replaces it.
+SLICES="$ROOT/build/slices"
+rm -rf "$SLICES"
 BIN_DIRS=()
 for arch in "${ARCHS[@]}"; do
   swift build -c release --arch "$arch" --product Herd
   swift build -c release --arch "$arch" --product HerdHelper
-  BIN_DIRS+=("$(swift build -c release --arch "$arch" --show-bin-path)")
+  bin="$(swift build -c release --arch "$arch" --show-bin-path)"
+  mkdir -p "$SLICES/$arch"
+  cp "$bin/Herd" "$bin/HerdHelper" "$SLICES/$arch/"
+  BIN_DIRS+=("$SLICES/$arch")
 done
 
 # Joins each architecture's build of a product into one binary.
