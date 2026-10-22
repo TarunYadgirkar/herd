@@ -75,8 +75,16 @@ struct FallbackIcon: View {
     }
 }
 
+// Plain EnvironmentKey instead of @Entry: the SwiftUI macro plugin ships only with Xcode, not the Command Line Tools.
+private struct HistorySamplesKey: EnvironmentKey {
+    static let defaultValue = Series.capacity
+}
+
 extension EnvironmentValues {
-    @Entry var historySamples: Int = Series.capacity
+    var historySamples: Int {
+        get { self[HistorySamplesKey.self] }
+        set { self[HistorySamplesKey.self] = newValue }
+    }
 }
 
 struct Sparkline: View {
