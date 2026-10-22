@@ -14,3 +14,15 @@ enum EnergyImpact {
         return chargedMicros / (seconds * microsPerSecond) * percent
     }
 }
+
+// Intel Macs leave ri_energy_nj at zero, so each process is charged the CPU package power in proportion to its CPU time.
+enum ProcessEnergy {
+    static func apportion(cpuWatts: Double, across samples: inout [ProcessSample]) {
+        guard cpuWatts > 0, !samples.contains(where: { $0.energyWatts > 0 }) else { return }
+        let totalCPU = samples.reduce(0) { $0 + max($1.cpuPercent, 0) }
+        guard totalCPU > 0 else { return }
+        for index in samples.indices {
+            samples[index].energyWatts = cpuWatts * max(samples[index].cpuPercent, 0) / totalCPU
+        }
+    }
+}

@@ -287,8 +287,11 @@ private struct InfoActions: View {
             Label("Efficiency", systemImage: "leaf")
         }
         .toggleStyle(.button)
-        .help(canChangePriority ? "Efficiency cores, low disk priority" : "Your own processes only")
+        .help(canChangePriority ? Self.efficiencyHelp : "Your own processes only")
     }
+
+    // Intel Macs have one kind of core, so background priority only lowers scheduling and disk priority there.
+    private static let efficiencyHelp = CPUTopology.clusters.count > 1 ? "Efficiency cores, low disk priority" : "Low CPU and disk priority"
 }
 
 private struct LiveStats: View {

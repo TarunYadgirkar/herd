@@ -35,12 +35,15 @@ private struct SMCPlan {
     let fans: [FanChannel]
     let systemPower: SMCChannel?
     let adapterPower: SMCChannel?
+    let cpuPower: SMCChannel?
+    let gpuPower: SMCChannel?
 }
 
 private enum SensorCatalog {
     static let plausibleCelsius = 1.0...150.0
     static let temperaturePrefix = UInt32(UInt8(ascii: "T"))
     static let floatType = SMCKey("flt ")
+    static let signedFixedPointPrefix = "sp"
 
     // Key meanings follow exelban/stats and dkorunic/iSMC, which agree on the M5 core and GPU tables.
     static let m5SuperCores = ["Tp00", "Tp04", "Tp08", "Tp0C", "Tp0G", "Tp0K"]
@@ -51,6 +54,22 @@ private enum SensorCatalog {
     static let memoryMirrors: Set<String> = ["Tm0y", "Tm2T"]
     static let cpuFallbackPrefix = "Tp"
     static let gpuFallbackPrefix = "Tg"
+
+    // Intel Macs use upper-case keys (VirtualSMC's SMCSensorKeys.txt, exelban/stats): TCnC per core, die and proximity otherwise.
+    static func isIntelCore(_ key: String) -> Bool {
+        let characters = Array(key)
+        return characters.count == 4 && key.hasPrefix("TC") && characters[2].isNumber && characters[3] == "C"
+    }
+
+    static let intelCPU: [(key: String, name: String)] = [
+        ("TCXC", "CPU die"), ("TC0F", "CPU die"), ("TC0E", "CPU die"), ("TC0D", "CPU die"), ("TCAD", "CPU package"), ("TC0P", "CPU proximity"),
+    ]
+    static let intelGPU: [(key: String, name: String)] = [
+        ("TCGC", "Intel graphics"), ("TGDD", "Radeon"), ("TG0D", "GPU die"), ("TG0P", "GPU proximity"),
+    ]
+    // CPU package and graphics power, best key first; Macs differ in which of these they publish.
+    static let intelCPUPower = ["PCPC", "PCPT", "PCTR", "PC0C"].map(SMCKey.init)
+    static let intelGPUPower = ["PCPG", "PCGC", "PG0R"].map(SMCKey.init)
 
     static let ssdKeys = ["TH0x", "TH0a", "TH0b"]
     static let batteryPriority = ["TB0T", "TB1T", "TB2T"]
@@ -71,6 +90,8 @@ private struct SMCSample {
     let fans: [FanReading]
     let systemWatts: Double?
     let adapterInWatts: Double?
+    let cpuWatts: Double?
+    let gpuWatts: Double?
 }
 
 // Each SMC read is a ~150 µs firmware round trip, so a full sweep of every temperature
@@ -104,7 +125,9 @@ private final class SMCSensorSource {
             temperatures: temperatures,
             fans: plan.fans.compactMap(readFan),
             systemWatts: plan.systemPower.flatMap(read),
-            adapterInWatts: plan.adapterPower.flatMap(read)
+            adapterInWatts: plan.adapterPower.flatMap(read),
+            cpuWatts: plan.cpuPower.flatMap(read).map { max($0, 0) },
+            gpuWatts: plan.gpuPower.flatMap(read).map { max($0, 0) }
         )
     }
 
@@ -164,7 +187,7 @@ final class SensorSampler {
     }
 
     private static func reading(from sample: SMCSample) -> SensorReading? {
-        guard !sample.temperatures.isEmpty || !sample.fans.isEmpty || sample.systemWatts != nil else { return nil }
+        guard !sample.temperatures.isEmpty || !sample.fans.isEmpty || sample.systemWatts != nil || sample.cpuWatts != nil else { return nil }
         let summary = summarize(sample.temperatures)
         return SensorReading(
             cpuCelsius: summary?.cpuCelsius,
@@ -176,6 +199,8 @@ final class SensorSampler {
             palmRestCelsius: summary?.palmRestCelsius,
             systemWatts: sample.systemWatts,
             adapterInWatts: sample.adapterInWatts,
+            cpuWatts: sample.cpuWatts,
+            gpuWatts: sample.gpuWatts,
             fans: sample.fans,
             temperatures: summary?.temperatures ?? []
         )
@@ -211,23 +236,42 @@ extension SensorSampler {
         let temperatures = temperatureChannels(from: discovered)
         let fans = fanChannels(smc)
         let systemPower = channel(SensorCatalog.systemPower, smc: smc)
-        guard !temperatures.isEmpty || !fans.isEmpty || systemPower != nil else { return nil }
+        let chipPower = chipPowerChannels(smc)
+        guard !temperatures.isEmpty || !fans.isEmpty || systemPower != nil || chipPower.cpu != nil else { return nil }
         return SMCPlan(
             temperatures: temperatures,
             fans: fans,
             systemPower: systemPower,
-            adapterPower: channel(SensorCatalog.adapterPower, smc: smc)
+            adapterPower: channel(SensorCatalog.adapterPower, smc: smc),
+            cpuPower: chipPower.cpu,
+            gpuPower: chipPower.gpu
         )
+    }
+
+    // Apple Silicon reads chip power from IOReport, so only Intel spends SMC reads on it.
+    private static func chipPowerChannels(_ smc: SMC) -> (cpu: SMCChannel?, gpu: SMCChannel?) {
+        #if arch(x86_64)
+        let readable = { (keys: [SMCKey]) in
+            keys.lazy.compactMap { channel($0, smc: smc) }.first { smc.read($0.key, info: $0.info) != nil }
+        }
+        return (readable(SensorCatalog.intelCPUPower), readable(SensorCatalog.intelGPUPower))
+        #else
+        return (nil, nil)
+        #endif
     }
 
     private static func discoverTemperatures(_ smc: SMC) -> [SMCChannel] {
         (0..<smc.keyCount()).compactMap { index in
             guard let key = smc.key(at: index), key.code >> 24 == SensorCatalog.temperaturePrefix,
-                  let info = smc.info(for: key), info.type == SensorCatalog.floatType,
+                  let info = smc.info(for: key), isTemperatureType(info.type),
                   let celsius = smc.read(key, info: info),
                   SensorCatalog.plausibleCelsius.contains(celsius) else { return nil }
             return SMCChannel(key: key, info: info)
         }
+    }
+
+    private static func isTemperatureType(_ type: SMCKey) -> Bool {
+        type == SensorCatalog.floatType || type.name.hasPrefix(SensorCatalog.signedFixedPointPrefix)
     }
 
     private static func temperatureChannels(from discovered: [SMCChannel]) -> [TemperatureChannel] {
@@ -250,11 +294,27 @@ extension SensorSampler {
         _ discovered: [SMCChannel],
         named: (String, String, SensorRole, SensorZone) -> TemperatureChannel?
     ) -> [TemperatureChannel] {
-        guard isM5 else { return rawChannels(discovered, prefix: SensorCatalog.cpuFallbackPrefix, role: .cpu, zone: .cpu) }
+        guard isM5 else { return fallbackCPUChannels(discovered, named: named) }
         let superCores = numbered(SensorCatalog.m5SuperCores, "Super").compactMap { named($0.key, $0.label, .cpu, .superCores) }
         let performance = numbered(SensorCatalog.m5PerformanceCores, "Performance").compactMap { named($0.key, $0.label, .cpu, .performanceCores) }
         let channels = superCores + performance
-        return channels.isEmpty ? rawChannels(discovered, prefix: SensorCatalog.cpuFallbackPrefix, role: .cpu, zone: .cpu) : channels
+        return channels.isEmpty ? fallbackCPUChannels(discovered, named: named) : channels
+    }
+
+    private static func fallbackCPUChannels(
+        _ discovered: [SMCChannel],
+        named: (String, String, SensorRole, SensorZone) -> TemperatureChannel?
+    ) -> [TemperatureChannel] {
+        // Some Intel Macs also have lower-case Tp keys, which measure the power supply there, so each slice keeps to its own table.
+        #if arch(x86_64)
+        let cores = discovered.map(\.key.name).filter(SensorCatalog.isIntelCore).sorted()
+        if !cores.isEmpty {
+            return numbered(cores, "Core").compactMap { named($0.key, $0.label, .cpu, .cpu) }
+        }
+        return SensorCatalog.intelCPU.lazy.compactMap { named($0.key, $0.name, .cpu, .cpu) }.first.map { [$0] } ?? []
+        #else
+        return rawChannels(discovered, prefix: SensorCatalog.cpuFallbackPrefix, role: .cpu, zone: .cpu)
+        #endif
     }
 
     private static func gpuChannels(
@@ -263,7 +323,12 @@ extension SensorSampler {
     ) -> [TemperatureChannel] {
         let known = isM5 ? numbered(SensorCatalog.m5GPUClusters, "GPU") : []
         let channels = known.compactMap { named($0.key, $0.label, .gpu, .gpu) }
-        return channels.isEmpty ? rawChannels(discovered, prefix: SensorCatalog.gpuFallbackPrefix, role: .gpu, zone: .gpu) : channels
+        guard channels.isEmpty else { return channels }
+        #if arch(x86_64)
+        return SensorCatalog.intelGPU.compactMap { named($0.key, $0.name, .gpu, .gpu) }
+        #else
+        return rawChannels(discovered, prefix: SensorCatalog.gpuFallbackPrefix, role: .gpu, zone: .gpu)
+        #endif
     }
 
     private static func memoryChannels(_ discovered: [SMCChannel]) -> [TemperatureChannel] {

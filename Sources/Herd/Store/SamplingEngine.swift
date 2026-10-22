@@ -63,7 +63,8 @@ actor SamplingEngine {
         var system = systemSampler.sample()
         system.sensors = sensorSampler.sample()
         system.batteryDetails = batterySampler.sample()
-        system.power = powerSampler.sample().map { reading in
+        let chipPower = powerSampler.isAvailable ? powerSampler.sample() : system.sensors.flatMap(PowerReading.init(smc:))
+        system.power = chipPower.map { reading in
             var merged = reading
             merged.systemWatts = system.sensors?.systemWatts
             return merged
@@ -72,7 +73,10 @@ actor SamplingEngine {
         let network = networkSampler.rates()
         if tickCount % Self.assertionRefreshTicks == 0 { awake = ProcessResources.sleepAssertions() }
         tickCount += 1
-        let samples = processSampler.sample(extras: ProcessExtras(gpu: gpu, network: network, sleepAssertions: awake))
+        var samples = processSampler.sample(extras: ProcessExtras(gpu: gpu, network: network, sleepAssertions: awake))
+        if !powerSampler.isAvailable, let cpuWatts = system.power?.cpuWatts {
+            ProcessEnergy.apportion(cpuWatts: cpuWatts, across: &samples)
+        }
         let groups = grouper.group(samples, regularAppPids: regularAppPids)
         return Frame(date: Date(), elapsed: elapsedSinceLastTick(), system: system, groups: groups, processCount: samples.count)
     }

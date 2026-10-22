@@ -45,7 +45,8 @@ enum CPUTopology {
         return (0..<levels).reversed().compactMap { level in
             guard let count = integer("hw.perflevel\(level).logicalcpu"), count > 0 else { return nil }
             defer { start += count }
-            let name = string("hw.perflevel\(level).name") ?? "Level \(level)"
+            // Intel Macs have one level and may leave it unnamed.
+            let name = string("hw.perflevel\(level).name") ?? (levels == 1 ? "Cores" : "Level \(level)")
             return CoreCluster(name: name, level: level, cores: start..<(start + count))
         }
     }
