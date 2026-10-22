@@ -6,7 +6,8 @@ Runs as your user. An optional root helper (Settings > System processes) reads e
 
 ## Requirements
 
-- macOS 15 or later, Apple Silicon
+- macOS 15 or later, on Apple Silicon or Intel (the app is a universal binary)
+- On Intel Macs, power comes from the SMC (CPU package and graphics), there is no Neural Engine reading, the GPU page shows no clock speeds, and per-app energy is the CPU package power split by CPU time
 - Xcode 27 (Swift 6.4)
 
 ## Build and run
@@ -14,7 +15,8 @@ Runs as your user. An optional root helper (Settings > System processes) reads e
 ```bash
 swift build                      # debug build
 swift test                       # parser and grouping tests
-./scripts/build-app.sh           # release build packaged as build/Herd.app
+./scripts/build-app.sh           # universal (Apple Silicon + Intel) release build packaged as build/Herd.app
+HERD_ARCHS=arm64 ./scripts/build-app.sh  # one architecture only, faster for local testing
 ./scripts/build-app.sh --install # also copies it to /Applications
 ./scripts/notarize.sh            # Developer ID build, notarized, packaged as build/Herd.dmg
 swiftlint lint                   # cyclomatic complexity stays at 15 or below

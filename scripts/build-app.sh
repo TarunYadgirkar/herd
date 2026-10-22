@@ -30,15 +30,26 @@ signing_identity() {
   echo "-"
 }
 
+# Universal by default so Intel Macs run it too. HERD_ARCHS=arm64 builds one slice for a quicker local build.
+read -r -a ARCHS <<<"${HERD_ARCHS:-arm64 x86_64}"
+
 cd "$ROOT"
-swift build -c release --arch arm64 --product Herd
-swift build -c release --arch arm64 --product HerdHelper
-BIN_DIR="$(swift build -c release --arch arm64 --show-bin-path)"
+BIN_DIRS=()
+for arch in "${ARCHS[@]}"; do
+  swift build -c release --arch "$arch" --product Herd
+  swift build -c release --arch "$arch" --product HerdHelper
+  BIN_DIRS+=("$(swift build -c release --arch "$arch" --show-bin-path)")
+done
+
+# Joins each architecture's build of a product into one binary.
+universal() {
+  lipo -create "${BIN_DIRS[@]/%//$1}" -output "$2"
+}
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Library/LaunchDaemons"
-cp "$BIN_DIR/Herd" "$APP/Contents/MacOS/Herd"
-cp "$BIN_DIR/HerdHelper" "$APP/Contents/MacOS/HerdHelper"
+universal Herd "$APP/Contents/MacOS/Herd"
+universal HerdHelper "$APP/Contents/MacOS/HerdHelper"
 cp "Resources/LaunchDaemons/$HELPER_ID.plist" "$APP/Contents/Library/LaunchDaemons/"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
@@ -53,6 +64,7 @@ codesign "${SIGN_FLAGS[@]}" --identifier "$HELPER_ID" "$APP/Contents/MacOS/HerdH
 codesign "${SIGN_FLAGS[@]}" "$APP" >/dev/null
 codesign --verify --strict --deep "$APP"
 echo "Signed with: $IDENTITY"
+echo "Architectures: $(lipo -archs "$APP/Contents/MacOS/Herd")"
 echo "$APP"
 
 if [[ "${1:-}" == "--install" ]]; then
