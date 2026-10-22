@@ -60,8 +60,13 @@ cp "Resources/LaunchDaemons/$HELPER_ID.plist" "$APP/Contents/Library/LaunchDaemo
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
-xcrun actool Resources/Assets.xcassets --compile "$APP/Contents/Resources" \
-  --platform macosx --minimum-deployment-target 15.0 --output-format human-readable-text >/dev/null
+# actool ships only with Xcode; without it the app falls back to the system accent color.
+if xcrun --find actool >/dev/null 2>&1; then
+  xcrun actool Resources/Assets.xcassets --compile "$APP/Contents/Resources" \
+    --platform macosx --minimum-deployment-target 15.0 --output-format human-readable-text >/dev/null
+else
+  echo "actool not found (no Xcode); skipping the asset catalog, so the accent color is the system default." >&2
+fi
 
 IDENTITY="$(signing_identity)"
 SIGN_FLAGS=(--force --sign "$IDENTITY")
