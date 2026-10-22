@@ -15,6 +15,7 @@ struct HerdApp: App {
                 .herdStyle()
                 .environment(store)
                 .environment(actions)
+                .environment(AppDelegate.remote)
                 .environment(\.historySamples, store.historySamples)
                 .frame(minWidth: 960, minHeight: 540)
                 .task { store.start() }
@@ -67,6 +68,11 @@ struct HerdApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     @MainActor static let store = MonitorStore()
+    @MainActor static let remote = RemoteMonitor()
+    static let remoteServer = RemoteStatsServer {
+        guard let system = await MainActor.run(body: { store.latestSystem }) else { return nil }
+        return RemoteStats(system: system, name: RemoteStats.computerName, disk: RemoteStats.startupDisk())
+    }
 
     // Sampling has to start even when no window opens at launch, because the menu bar label needs live numbers.
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -75,7 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         MainActor.assumeIsolated {
             Self.store.start()
             Self.store.alerts.requestAuthorization()
+            Self.remote.start()
         }
+        Self.remoteServer.setEnabled(UserDefaults.standard.bool(forKey: RemoteMonitor.shareKey))
         Task.detached { await RootHelper.shared.reregisterIfResigned() }
     }
 

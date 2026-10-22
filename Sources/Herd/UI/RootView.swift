@@ -5,6 +5,7 @@ enum SidebarItem: Hashable, Identifiable, RawRepresentable {
     case projects
     case performance(PerformanceSection)
     case history
+    case remote(String)
 
     init?(rawValue: String) {
         switch rawValue {
@@ -12,6 +13,10 @@ enum SidebarItem: Hashable, Identifiable, RawRepresentable {
         case "projects": self = .projects
         case "history": self = .history
         default:
+            if rawValue.hasPrefix(Self.remotePrefix) {
+                self = .remote(String(rawValue.dropFirst(Self.remotePrefix.count)))
+                return
+            }
             guard rawValue.hasPrefix(Self.performancePrefix),
                   let section = PerformanceSection(rawValue: String(rawValue.dropFirst(Self.performancePrefix.count))) else { return nil }
             self = .performance(section)
@@ -24,17 +29,20 @@ enum SidebarItem: Hashable, Identifiable, RawRepresentable {
         case .projects: "projects"
         case .history: "history"
         case .performance(let section): Self.performancePrefix + section.rawValue
+        case .remote(let host): Self.remotePrefix + host
         }
     }
 
     var id: String { rawValue }
 
     private static let performancePrefix = "performance."
+    private static let remotePrefix = "remote."
 }
 
 struct RootView: View {
     @Environment(MonitorStore.self) private var store
     @Environment(ActionController.self) private var actions
+    @Environment(RemoteMonitor.self) private var remote
     @AppStorage("sidebarItem") private var storedItem = SidebarItem.processes.rawValue
 
     var body: some View {
@@ -73,6 +81,9 @@ struct RootView: View {
         case .history:
             AppHistoryView()
                 .navigationTitle("App History")
+        case .remote(let host):
+            RemoteMacView(host: host)
+                .navigationTitle(remote.macs[host]?.stats?.name ?? host)
         }
     }
 }
@@ -80,6 +91,8 @@ struct RootView: View {
 private struct Sidebar: View {
     @Binding var selection: SidebarItem?
     @Environment(MonitorStore.self) private var store
+    @Environment(RemoteMonitor.self) private var remote
+    @AppStorage(RemoteMonitor.hostsKey) private var remoteHosts = ""
 
     var body: some View {
         List(selection: $selection) {
@@ -96,6 +109,22 @@ private struct Sidebar: View {
             Section {
                 Label("App History", systemImage: "clock.arrow.circlepath")
                     .tag(SidebarItem.history)
+            }
+            let hosts = RemoteNetwork.hosts(from: remoteHosts)
+            if !hosts.isEmpty {
+                Section("Other Macs") {
+                    TimelineView(.periodic(from: .now, by: 5)) { timeline in
+                        ForEach(hosts, id: \.self) { host in
+                            let mac = remote.macs[host]
+                            SidebarRow(
+                                title: mac?.stats?.name ?? host,
+                                symbol: "laptopcomputer",
+                                value: RemoteSummary.sidebar(mac, now: timeline.date)
+                            )
+                            .tag(SidebarItem.remote(host))
+                        }
+                    }
+                }
             }
         }
         .listStyle(.sidebar)

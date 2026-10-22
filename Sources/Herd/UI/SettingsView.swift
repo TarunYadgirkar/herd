@@ -10,6 +10,8 @@ struct SettingsView: View {
     @AppStorage(DockGraphSettings.enabledKey) private var dockGraph = false
     @AppStorage(AlertSettings.cpuThresholdKey) private var cpuThreshold = AlertSettings.defaultCPUThreshold
     @AppStorage(AlertSettings.cpuMinutesKey) private var cpuMinutes = AlertSettings.defaultCPUMinutes
+    @AppStorage(RemoteMonitor.shareKey) private var shareStats = false
+    @AppStorage(RemoteMonitor.hostsKey) private var remoteHosts = ""
 
     @State private var notificationStatus: UNAuthorizationStatus?
 
@@ -52,6 +54,18 @@ struct SettingsView: View {
                 .disabled(!alertsEnabled)
                 Button("Reset Ignored Apps") { UserDefaults.standard.removeObject(forKey: AlertSettings.ignoredKey) }
                     .disabled(AlertSettings.ignoredGroups.isEmpty)
+            }
+            Section {
+                Toggle("Share this Mac's stats", isOn: $shareStats)
+                    .onChange(of: shareStats) { _, isOn in AppDelegate.remoteServer.setEnabled(isOn) }
+                TextField("Watch Macs", text: $remoteHosts, prompt: Text("Tailscale names, like old-macbook"))
+                    .onSubmit { AppDelegate.remote.refreshNow() }
+            } header: {
+                Text("Other Macs")
+            } footer: {
+                Text("Uses Tailscale. Only devices on your tailnet can read the shared stats (port \(String(RemoteNetwork.port))).")
+                    .font(.captionText)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

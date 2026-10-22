@@ -77,7 +77,7 @@ struct BatteryPerformanceView: View {
     }
 }
 
-private enum BatteryGlyph {
+enum BatteryGlyph {
     private static let lowPercent = 20.0
     private static let criticalPercent = 10.0
 
