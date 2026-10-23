@@ -242,6 +242,9 @@ final class MonitorStore {
         archive.save()
     }
 
+    // The newest sample even while no window shows it, for sharing with the user's other Macs.
+    var latestSystem: SystemSnapshot? { latestFrame?.system }
+
     private func publishDetail() {
         guard let latestFrame else { return }
         system = latestFrame.system
