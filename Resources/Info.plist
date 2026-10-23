@@ -2,17 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>ATSApplicationFontsPath</key>
-	<string>Fonts</string>
+	<key>CFBundleName</key>
+	<string>Herd</string>
 	<key>CFBundleDisplayName</key>
 	<string>Herd</string>
-	<key>CFBundleExecutable</key>
-	<string>Herd</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.tarunyadgirkar.herd</string>
-	<key>CFBundleName</key>
+	<key>CFBundleExecutable</key>
 	<string>Herd</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
@@ -20,14 +16,18 @@
 	<string>1.3</string>
 	<key>CFBundleVersion</key>
 	<string>4</string>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.utilities</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
 	<key>NSAccentColorName</key>
 	<string>AccentColor</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>ATSApplicationFontsPath</key>
+	<string>Fonts</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>
