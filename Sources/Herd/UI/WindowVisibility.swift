@@ -31,12 +31,9 @@ struct WindowVisibilityReader: NSViewRepresentable {
                 let isClosing = name == NSWindow.willCloseNotification
                 return NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
                     MainActor.assumeIsolated {
-                        guard let self else { return }
-                        self.onChange?(!isClosing && (window?.occlusionState.contains(.visible) ?? false))
-                        if isClosing {
-                            self.observers.forEach(NotificationCenter.default.removeObserver)
-                            self.observers = []
-                        }
+                        // Observers stay after a close: SwiftUI can reshow the same window, and only a later
+                        // occlusion change reports it visible again. viewDidMoveToWindow removes them on teardown.
+                        self?.onChange?(!isClosing && (window?.occlusionState.contains(.visible) ?? false))
                     }
                 }
             }

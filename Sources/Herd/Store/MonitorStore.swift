@@ -183,7 +183,13 @@ final class MonitorStore {
     // Re-rendering the app table is the most expensive thing Herd does, so per-app data is only published while someone can see it.
     func setSurface(_ name: String, visible: Bool) {
         updateVisibility {
-            if visible { visibleSurfaces.insert(name) } else { visibleSurfaces.remove(name) }
+            if visible {
+                visibleSurfaces.insert(name)
+                // A missed unlock notification would otherwise leave every window frozen until the next lock cycle.
+                isScreenAway = Self.isScreenLocked
+            } else {
+                visibleSurfaces.remove(name)
+            }
         }
     }
 
@@ -196,6 +202,10 @@ final class MonitorStore {
         Task { await engine.setDetailVisible(isVisible) }
     }
 
+    private static var isScreenLocked: Bool {
+        (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+    }
+
     private func observeScreen() {
         let workspace = NSWorkspace.shared.notificationCenter
         let distributed = DistributedNotificationCenter.default()
@@ -205,7 +215,7 @@ final class MonitorStore {
             (distributed, Notification.Name("com.apple.screenIsLocked"), true),
             (distributed, Notification.Name("com.apple.screenIsUnlocked"), false),
         ]
-        isScreenAway = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+        isScreenAway = Self.isScreenLocked
         screenObservers = away.map { center, name, isAway in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.updateVisibility { self?.isScreenAway = isAway } }
@@ -228,6 +238,9 @@ final class MonitorStore {
             }
         }
         latestFrame = frame
+        // System readings are cheap to publish and the charts beside them redraw from the archive every tick,
+        // so they're always published; otherwise a page's current value freezes while its graph keeps moving.
+        system = frame.system
         projectTracker.record(frame.groups, at: frame.date)
         dockGraph.update(cpu: frame.system.cpuTotal)
         let nextHeadline = Headline(cpu: frame.system.cpuTotal, memoryUsed: frame.system.memoryUsed)
@@ -247,7 +260,6 @@ final class MonitorStore {
 
     private func publishDetail() {
         guard let latestFrame else { return }
-        system = latestFrame.system
         groups = latestFrame.groups
         processCount = latestFrame.processCount
         historyRevision += 1
