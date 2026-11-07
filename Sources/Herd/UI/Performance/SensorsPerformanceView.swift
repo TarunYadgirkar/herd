@@ -22,7 +22,8 @@ struct SensorsPerformanceView: View {
                 ],
                 unit: .fahrenheit,
                 context: context,
-                includesZero: false
+                includesZero: false,
+                limit: ChartLimit(label: "Too hot", value: PerformanceFormat.fahrenheit(HeatScale.chipHotCelsius))
             )
             if !sensors.fans.isEmpty { fanChart }
             SensorListCard(sensors: sensors)
@@ -95,6 +96,8 @@ struct ThermalBadge: View {
 
 // Chips run hot by design; skin and storage feel or throttle at much lower temperatures.
 enum HeatScale {
+    static let chipHotCelsius = 90.0
+
     static func color(for celsius: Double, zone: SensorZone) -> Color? {
         let limits = thresholds(zone)
         if celsius >= limits.hot { return Theme.hot }
@@ -114,7 +117,7 @@ enum HeatScale {
         case .surface: (38, 45)
         case .inside, .storage: (60, 75)
         case .memory: (75, 90)
-        case .superCores, .performanceCores, .cpu, .gpu: (70, 90)
+        case .superCores, .performanceCores, .cpu, .gpu: (70, chipHotCelsius)
         }
     }
 }

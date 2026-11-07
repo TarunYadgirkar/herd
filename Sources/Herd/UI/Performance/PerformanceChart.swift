@@ -1,6 +1,11 @@
 import Charts
 import SwiftUI
 
+struct ChartLimit {
+    let label: String
+    let value: Double
+}
+
 struct PerformanceChart: View {
     let title: String
     let series: [ChartSeries]
@@ -10,6 +15,7 @@ struct PerformanceChart: View {
     var includesZero = true
     var height: CGFloat = 200
     var contributors: ContributorMetric?
+    var limit: ChartLimit?
 
     var body: some View {
         ChartCard(title: title, legend: series.count > 1 ? series.map(LegendItem.init) : []) {
@@ -26,7 +32,7 @@ struct PerformanceChart: View {
         } else {
             PlotView(
                 plots: series.map { SeriesPlot(series: $0, points: $0.plotPoints(dates: context.dates, segments: context.segments)) },
-                unit: unit, context: context, yDomain: yDomain, includesZero: includesZero, contributors: contributors
+                unit: unit, context: context, yDomain: yDomain, includesZero: includesZero, contributors: contributors, limit: limit
             )
             .frame(height: height)
             .accessibilityLabel(title)
@@ -74,6 +80,7 @@ private struct PlotView: View {
     let yDomain: ClosedRange<Double>?
     let includesZero: Bool
     let contributors: ContributorMetric?
+    let limit: ChartLimit?
 
     private static let calloutGap: CGFloat = 8
 
@@ -82,6 +89,9 @@ private struct PlotView: View {
         let selected = context.selectedIndex
         Chart {
             ForEach(plots) { SeriesMarks(plot: $0) }
+            if let limit {
+                LimitMark(limit: limit, text: "\(limit.label) \(unit.value(limit.value))")
+            }
             if let selected {
                 RuleMark(x: .value("Time", context.dates[selected]))
                     .foregroundStyle(ChartPalette.rule)
@@ -102,7 +112,7 @@ private struct PlotView: View {
         }
         let values = plots.flatMap { plot in plot.points.flatMap { plot.fillStyle == nil ? [$0.high] : [$0.low, $0.high] } }.filter(\.isFinite)
         let lower = includesZero ? min(values.min() ?? 0, 0) : (values.min() ?? 0)
-        let upper = includesZero ? max(values.max() ?? 0, 0) : (values.max() ?? 0)
+        let upper = max(includesZero ? max(values.max() ?? 0, 0) : (values.max() ?? 0), limit?.value ?? -.infinity)
         return AxisTicks.values(lower: lower, upper: upper, isBinary: isBinary)
     }
 
@@ -209,6 +219,20 @@ private struct SeriesMarks: ChartContent {
                 .lineStyle(StrokeStyle(lineWidth: plot.series.lineWidth, lineCap: .round, lineJoin: .round))
                 .interpolationMethod(.monotone)
         }
+    }
+}
+
+private struct LimitMark: ChartContent {
+    let limit: ChartLimit
+    let text: String
+
+    var body: some ChartContent {
+        RuleMark(y: .value("Limit", limit.value))
+            .foregroundStyle(Theme.hot)
+            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            .annotation(position: .bottom, alignment: .leading, spacing: 2) {
+                Text(text).font(.metricSmall).foregroundStyle(Theme.hotText)
+            }
     }
 }
 
