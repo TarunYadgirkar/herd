@@ -25,8 +25,17 @@ enum PerformanceFormat {
         String(format: "%.\(decimals)f", Double(bytes) / gigabyte)
     }
 
-    static func celsius(_ value: Double) -> String {
-        String(format: "%.0f °C", value)
+    // Sensors report Celsius and history stores it, so only what's on screen converts.
+    static func fahrenheit(_ celsius: Double) -> Double {
+        celsius * 9 / 5 + 32
+    }
+
+    static func temperature(_ celsius: Double) -> String {
+        degreesFahrenheit(fahrenheit(celsius))
+    }
+
+    static func degreesFahrenheit(_ value: Double) -> String {
+        String(format: "%.0f °F", value)
     }
 
     static func gigahertz(_ megahertz: Double) -> String {
@@ -68,7 +77,7 @@ enum ChartUnit {
     case bytes
     case rate
     case watts
-    case celsius
+    case fahrenheit
     case rpm
 
     func value(_ raw: Double) -> String {
@@ -78,7 +87,7 @@ enum ChartUnit {
         case .bytes: PerformanceFormat.bytes(raw)
         case .rate: Format.rate(abs(raw))
         case .watts: Format.watts(abs(raw))
-        case .celsius: PerformanceFormat.celsius(raw)
+        case .fahrenheit: PerformanceFormat.degreesFahrenheit(raw)
         case .rpm: PerformanceFormat.rpm(raw)
         }
     }
@@ -90,7 +99,7 @@ enum ChartUnit {
         case .bytes: PerformanceFormat.compactBytes(raw)
         case .rate: PerformanceFormat.compactBytes(raw, suffix: "/s")
         case .watts: String(format: abs(raw) < 10 && raw != raw.rounded() ? "%.1f W" : "%.0f W", abs(raw))
-        case .celsius: String(format: "%.0f°", raw)
+        case .fahrenheit: String(format: "%.0f°", raw)
         case .rpm: String(format: "%.0f rpm", raw)
         }
     }

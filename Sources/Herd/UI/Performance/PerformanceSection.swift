@@ -39,7 +39,7 @@ enum PerformanceSection: String, CaseIterable, Identifiable {
         case .network: Format.rate(system.netInBps + system.netOutBps)
         case .disk: Format.rate(system.diskReadBps + system.diskWriteBps)
         case .energy: (system.sensors?.systemWatts ?? system.power?.packageWatts).map(Format.watts) ?? PerformanceFormat.missing
-        case .sensors: system.sensors?.cpuCelsius.map(PerformanceFormat.celsius) ?? PerformanceFormat.missing
+        case .sensors: system.sensors?.cpuCelsius.map(PerformanceFormat.temperature) ?? PerformanceFormat.missing
         case .battery: batteryPercent(system).map(Format.percent) ?? PerformanceFormat.missing
         }
     }

@@ -158,7 +158,7 @@ final class AlertMonitor {
         notify(
             key: "heat", group: nil, at: now,
             title: "Your Mac is running hot",
-            body: "The CPU has stayed above \(Int(Self.hotCelsius)) °C for a minute. macOS may slow it down to cool off."
+            body: "The CPU has stayed above \(PerformanceFormat.temperature(Self.hotCelsius)) for a minute. macOS may slow it down to cool off."
         )
     }
 

@@ -46,7 +46,7 @@ struct RemoteMacView: View {
         let isOnline = mac?.isOnline(at: now) ?? false
         return PerformanceHeader(
             title: stats.name,
-            value: stats.batteryPercent.map(Format.percent) ?? stats.cpuCelsius.map(PerformanceFormat.celsius) ?? PerformanceFormat.missing,
+            value: stats.batteryPercent.map(Format.percent) ?? stats.cpuCelsius.map(PerformanceFormat.temperature) ?? PerformanceFormat.missing,
             symbol: stats.batteryPercent.map { BatteryGlyph.symbol(percent: $0, isPowered: stats.isCharging == true || stats.isOnAC == true) },
             symbolTint: stats.batteryPercent.map {
                 BatteryGlyph.tint(percent: $0, isCharging: stats.isCharging == true, isOnAC: stats.isOnAC == true)
@@ -67,7 +67,7 @@ enum RemoteSummary {
     static func sidebar(_ mac: RemoteMac?, now: Date) -> String {
         guard let mac, let stats = mac.stats else { return mac?.failure == nil ? PerformanceFormat.missing : "Offline" }
         guard mac.isOnline(at: now) else { return "Offline" }
-        let parts = [stats.batteryPercent.map(Format.percent), stats.cpuCelsius.map(PerformanceFormat.celsius)].compactMap(\.self)
+        let parts = [stats.batteryPercent.map(Format.percent), stats.cpuCelsius.map(PerformanceFormat.temperature)].compactMap(\.self)
         return parts.isEmpty ? Format.percent(stats.cpuPercent) : parts.joined(separator: " · ")
     }
 
@@ -93,9 +93,9 @@ enum RemoteSummary {
         var result: [PerformanceStat] = []
         if stats.batteryPercent != nil { result.append(PerformanceStat(label: "Power", value: powerState(stats))) }
         if let cpu = stats.cpuCelsius {
-            result.append(PerformanceStat(label: "CPU temperature", value: PerformanceFormat.celsius(cpu), tint: temperatureTint(cpu)))
+            result.append(PerformanceStat(label: "CPU temperature", value: PerformanceFormat.temperature(cpu), tint: temperatureTint(cpu)))
         }
-        if let gpu = stats.gpuCelsius { result.append(PerformanceStat(label: "GPU temperature", value: PerformanceFormat.celsius(gpu))) }
+        if let gpu = stats.gpuCelsius { result.append(PerformanceStat(label: "GPU temperature", value: PerformanceFormat.temperature(gpu))) }
         if let rpm = stats.fanRPM { result.append(PerformanceStat(label: "Fan", value: rpm > 0 ? PerformanceFormat.rpm(rpm) : "Off")) }
         result.append(PerformanceStat(label: "Thermal state", value: thermalTitle(stats.thermalState)))
         return result

@@ -139,7 +139,7 @@ private struct BatteryDetailsCard: View {
             ("Voltage", details.voltage.map { String(format: "%.2f V", $0) }),
             ("Current", details.amperage.map { String(format: "%.2f A", $0) }),
             ("Charger", details.adapterWatts.map { String(format: "%.0f W", $0) }),
-            ("Temperature", details.celsius.map(PerformanceFormat.celsius)),
+            ("Temperature", details.celsius.map(PerformanceFormat.temperature)),
         ]
         let rest = entries.compactMap { label, value in value.map { PerformanceStat(label: label, value: $0) } }
         return [BatteryHealth.stat(details)].compactMap { $0 } + rest
