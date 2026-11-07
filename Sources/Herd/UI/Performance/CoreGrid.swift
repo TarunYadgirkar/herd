@@ -108,10 +108,10 @@ private struct ClusterRow: View {
                     .accessibilityLabel("Clock \(PerformanceFormat.gigahertz(frequency))")
             }
             if let celsius {
-                Label(PerformanceFormat.celsius(celsius), systemImage: "thermometer.medium")
+                Label(PerformanceFormat.temperature(celsius), systemImage: "thermometer.medium")
                     .font(.metric)
                     .foregroundStyle(HeatScale.textColor(for: celsius, zone: .superCores) ?? .secondary)
-                    .accessibilityLabel("Hottest sensor \(PerformanceFormat.celsius(celsius))")
+                    .accessibilityLabel("Hottest sensor \(PerformanceFormat.temperature(celsius))")
             }
         }
     }

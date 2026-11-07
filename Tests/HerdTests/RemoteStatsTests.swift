@@ -48,7 +48,7 @@ private func stats(battery: Double? = 80, cpuCelsius: Double? = 41) -> RemoteSta
     @Test func sidebarShowsBatteryAndTemperatureWhileOnline() {
         let now = Date()
         let mac = RemoteMac(stats: stats(), lastSeen: now)
-        #expect(RemoteSummary.sidebar(mac, now: now) == "80% · 41 °C")
+        #expect(RemoteSummary.sidebar(mac, now: now) == "80% · 106 °F")
         #expect(RemoteSummary.sidebar(mac, now: now.addingTimeInterval(RemoteMac.offlineAfter + 1)) == "Offline")
     }
 

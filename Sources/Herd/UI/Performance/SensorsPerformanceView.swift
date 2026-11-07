@@ -7,7 +7,7 @@ struct SensorsPerformanceView: View {
         if let sensors = context.system.sensors {
             PerformanceHeader(
                 title: "Sensors",
-                value: sensors.cpuCelsius.map(PerformanceFormat.celsius) ?? PerformanceFormat.missing,
+                value: sensors.cpuCelsius.map(PerformanceFormat.temperature) ?? PerformanceFormat.missing,
                 caption: Text("CPU"),
                 stats: stats(sensors)
             ) {
@@ -16,11 +16,11 @@ struct SensorsPerformanceView: View {
             PerformanceChart(
                 title: "Temperature",
                 series: [
-                    ChartSeries(name: "CPU", color: ChartPalette.cpuTemperature, values: context.values { $0.cpuCelsius }, fill: .none, lineWidth: 2),
-                    ChartSeries(name: "GPU", color: ChartPalette.gpuTemperature, values: context.values { $0.gpuCelsius }, fill: .none, lineWidth: 2),
-                    ChartSeries(name: "Lid", color: ChartPalette.lidTemperature, values: context.values { $0.lidCelsius }, fill: .none, lineWidth: 2),
+                    ChartSeries(name: "CPU", color: ChartPalette.cpuTemperature, values: context.values { $0.cpuCelsius.map(PerformanceFormat.fahrenheit) }, fill: .none, lineWidth: 2),
+                    ChartSeries(name: "GPU", color: ChartPalette.gpuTemperature, values: context.values { $0.gpuCelsius.map(PerformanceFormat.fahrenheit) }, fill: .none, lineWidth: 2),
+                    ChartSeries(name: "Lid", color: ChartPalette.lidTemperature, values: context.values { $0.lidCelsius.map(PerformanceFormat.fahrenheit) }, fill: .none, lineWidth: 2),
                 ],
-                unit: .celsius,
+                unit: .fahrenheit,
                 context: context,
                 includesZero: false
             )
@@ -59,7 +59,7 @@ struct SensorsPerformanceView: View {
             ("SSD", sensors.ssdCelsius),
             ("Battery", sensors.batteryCelsius),
         ]
-        let temperatures = readings.compactMap { label, value in value.map { PerformanceStat(label: label, value: PerformanceFormat.celsius($0)) } }
+        let temperatures = readings.compactMap { label, value in value.map { PerformanceStat(label: label, value: PerformanceFormat.temperature($0)) } }
         let fans = sensors.fans.map { PerformanceStat(label: $0.name, value: PerformanceFormat.rpm($0.rpm)) }
         let noFans = sensors.fans.isEmpty ? [PerformanceStat(label: "Fans", value: "None")] : []
         return temperatures + fans + noFans
@@ -152,7 +152,7 @@ private struct ZoneRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadText.weight(.semibold))
                 if let hottest {
-                    Text(PerformanceFormat.celsius(hottest))
+                    Text(PerformanceFormat.temperature(hottest))
                         .font(.displaySmall)
                         .foregroundStyle(HeatScale.textColor(for: hottest, zone: zone) ?? .primary)
                 }
@@ -195,14 +195,14 @@ private struct HeatCells: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: Self.cellWidth), spacing: 4)], alignment: .leading, spacing: 4) {
             ForEach(readings) { reading in
                 let tint = HeatScale.color(for: reading.celsius, zone: zone)
-                Text(String(format: "%.0f°", reading.celsius))
+                Text(String(format: "%.0f°", PerformanceFormat.fahrenheit(reading.celsius)))
                     .font(.metricSmall)
                     .foregroundStyle(HeatScale.textColor(for: reading.celsius, zone: zone) ?? .primary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
                     .background((tint ?? Color.secondary).opacity(tint == nil ? 0.10 : 0.18), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                     .help(reading.key)
-                    .accessibilityLabel("\(reading.name), \(PerformanceFormat.celsius(reading.celsius))")
+                    .accessibilityLabel("\(reading.name), \(PerformanceFormat.temperature(reading.celsius))")
             }
         }
     }
@@ -222,12 +222,12 @@ private struct HeatStrip: View {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(HeatScale.color(for: reading.celsius, zone: zone) ?? Theme.accent)
                     .opacity(0.35 + 0.65 * relative(reading.celsius, low: low))
-                    .help("\(reading.key) \(PerformanceFormat.celsius(reading.celsius))")
+                    .help("\(reading.key) \(PerformanceFormat.temperature(reading.celsius))")
             }
         }
         .frame(height: Self.height)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(readings.count) sensors, \(PerformanceFormat.celsius(low)) to \(PerformanceFormat.celsius(readings.map(\.celsius).max() ?? low))")
+        .accessibilityLabel("\(readings.count) sensors, \(PerformanceFormat.temperature(low)) to \(PerformanceFormat.temperature(readings.map(\.celsius).max() ?? low))")
     }
 
     private func relative(_ celsius: Double, low: Double) -> Double {
@@ -251,7 +251,7 @@ private struct NamedReadings: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: Theme.itemSpacing)
-                    Text(PerformanceFormat.celsius(reading.celsius))
+                    Text(PerformanceFormat.temperature(reading.celsius))
                         .font(.metric)
                         .foregroundStyle(HeatScale.textColor(for: reading.celsius, zone: zone) ?? .primary)
                 }
