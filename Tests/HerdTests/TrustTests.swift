@@ -143,4 +143,24 @@ private func makeProject(_ root: URL, marker: String) throws {
         _ = fresh.evaluate(frame(at: 0, cpu: 150), maxGap: 6)
         #expect(fresh.evaluate(frame(at: hold + 600, cpu: 150), maxGap: 6).isEmpty)
     }
+
+    private func strainedFrame(at seconds: TimeInterval, pressure: MemoryPressure, swapUsed: UInt64) -> Frame {
+        let base = frame(at: seconds, cpu: 1)
+        var system = SystemSnapshot()
+        system.pressure = pressure
+        system.swapTotal = 20_000_000_000
+        system.swapUsed = swapUsed
+        return Frame(date: base.date, elapsed: 2, system: system, groups: base.groups, processCount: 1)
+    }
+
+    @MainActor @Test func warnsWhenSwapStaysHeavyUnderWarningPressure() {
+        let alerts = AlertMonitor()
+        var fired: [String] = []
+        for t in stride(from: 0.0, through: 118, by: 2) { fired += alerts.evaluate(strainedFrame(at: t, pressure: .warning, swapUsed: 18_000_000_000), maxGap: 6) }
+        #expect(fired.isEmpty)
+        #expect(alerts.evaluate(strainedFrame(at: 120, pressure: .warning, swapUsed: 18_000_000_000), maxGap: 6) == ["pressure"])
+
+        let light = AlertMonitor()
+        for t in stride(from: 0.0, through: 300, by: 2) { #expect(light.evaluate(strainedFrame(at: t, pressure: .warning, swapUsed: 2_000_000_000), maxGap: 6).isEmpty) }
+    }
 }

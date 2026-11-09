@@ -76,6 +76,13 @@ struct SystemSnapshot: Sendable {
     var uptime: TimeInterval = 0
 
     var cpuTotal: Double { cpuUser + cpuSystem }
+
+    private static let heavySwapShare = 0.5
+
+    // macOS grows the swap file as it fills, so half of it in use means memory has been short for a while.
+    var isSwapHeavy: Bool {
+        swapTotal > 0 && Double(swapUsed) > Double(swapTotal) * Self.heavySwapShare
+    }
 }
 
 struct Snapshot: Sendable {

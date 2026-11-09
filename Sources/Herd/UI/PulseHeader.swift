@@ -240,7 +240,6 @@ private struct MemoryTile: View {
     let system: SystemSnapshot
 
     private static let gigabyte = 1_073_741_824.0
-    private static let heavySwapShare = 0.5
 
     var body: some View {
         Tile(title: "Memory", kind: .memory, summary: summary) {
@@ -265,13 +264,9 @@ private struct MemoryTile: View {
             Image(systemName: "externaldrive.fill").font(.footnoteText)
             Text(Format.bytes(system.swapUsed)).font(.metricSmall)
         }
-        .foregroundStyle(isSwapHeavy ? Theme.warning : .secondary)
+        .foregroundStyle(system.isSwapHeavy ? Theme.warning : .secondary)
         .fixedSize()
         .help("Swap")
-    }
-
-    private var isSwapHeavy: Bool {
-        system.swapTotal > 0 && Double(system.swapUsed) > Double(system.swapTotal) * Self.heavySwapShare
     }
 
     private var totalLabel: String {

@@ -42,7 +42,8 @@ final class AlertMonitor {
     }
 
     private static let cooldown: TimeInterval = 30 * 60
-    private static let pressureHold: TimeInterval = 30
+    private static let criticalHold: TimeInterval = 30
+    private static let strainHold: TimeInterval = 2 * 60
     private static let memoryGrowthWindow: TimeInterval = 10 * 60
     private static let memoryGrowthBytes: UInt64 = 3 * 1_073_741_824
     private static let hotCelsius = 100.0
@@ -51,7 +52,7 @@ final class AlertMonitor {
     private var cpuStreaks: [String: Date] = [:]
     private var memoryBaselines: [String: Streak] = [:]
     private var lastAlert: [String: Date] = [:]
-    private var criticalSince: Date?
+    private var strainedSince: Date?
     private var hotSince: Date?
     private var lastFrameDate: Date?
     // Set once the app has a notification center. Permission is not cached here: macOS drops posts while it is off,
@@ -92,7 +93,7 @@ final class AlertMonitor {
         guard let lastFrameDate, date.timeIntervalSince(lastFrameDate) > maxGap else { return }
         cpuStreaks = [:]
         memoryBaselines = [:]
-        criticalSince = nil
+        strainedSince = nil
         hotSince = nil
     }
 
@@ -132,18 +133,29 @@ final class AlertMonitor {
         memoryBaselines = next
     }
 
+    // macOS can sit at "warning" for days while swapping heavily, and that is when the Mac feels slow, so warning plus
+    // heavy swap counts as strain too, only after a longer hold.
+    private static func strainHold(_ system: SystemSnapshot) -> TimeInterval? {
+        switch system.pressure {
+        case .critical: criticalHold
+        case .warning where system.isSwapHeavy: strainHold
+        default: nil
+        }
+    }
+
     private func checkPressure(_ frame: Frame, at now: Date) {
-        guard frame.system.pressure == .critical else {
-            criticalSince = nil
+        guard let hold = Self.strainHold(frame.system) else {
+            strainedSince = nil
             return
         }
-        let since = criticalSince ?? now
-        criticalSince = since
-        guard now.timeIntervalSince(since) >= Self.pressureHold, let top = frame.groups.max(by: { $0.metrics.memory < $1.metrics.memory }) else { return }
+        let since = strainedSince ?? now
+        strainedSince = since
+        let candidates = frame.groups.filter { $0.kind != .system && !$0.pids.contains(getpid()) }
+        guard now.timeIntervalSince(since) >= hold, let top = candidates.max(by: { $0.metrics.memory < $1.metrics.memory }) else { return }
         notify(
-            key: "pressure", group: nil, at: now,
-            title: "Your Mac is running out of memory",
-            body: "\(top.name) uses the most, \(Format.bytes(top.metrics.memory)). Closing apps you aren't using frees memory, though not all of an app's footprint comes back."
+            key: "pressure", group: top, at: now,
+            title: "Your Mac is short on memory",
+            body: "It has moved \(Format.bytes(frame.system.swapUsed)) to disk, which slows everything down. \(top.name) uses the most, \(Format.bytes(top.metrics.memory))."
         )
     }
 
