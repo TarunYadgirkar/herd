@@ -69,3 +69,53 @@ import Testing
         #expect(ScriptLabel.make(runtime: .java, arguments: ["java", "-cp", "lib/*", "com.example.Main"], workingDirectory: nil).title == "Main")
     }
 }
+
+@Suite struct VirtualMachineGroupingTests {
+    private static let vmPath = "/System/Library/Frameworks/Virtualization.framework/Versions/A/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine"
+    private let home = "/Users/someone"
+
+    private func vm(pid: pid_t, responsible: pid_t) -> ProcessSample {
+        ProcessSample(
+            id: "\(pid)", pid: pid, ppid: 1, responsiblePid: responsible, uid: getuid(), name: "com.apple.Virtualization.VirtualMachine",
+            path: Self.vmPath, arguments: [], startTime: nil, cpuPercent: 5, memoryBytes: 8_000_000_000, energyWatts: 0, diskReadBps: 0,
+            diskWriteBps: 0, netInBps: 0, netOutBps: 0, gpuPercent: 0, threads: 4, isApproximate: false, isSuspended: false
+        )
+    }
+
+    @Test func resolvesOwnerFromOpenDiskImages() {
+        let inBundle = ["\(home)/Library/Application Support/Claude/vm_bundles/claudevm.bundle/rootfs.img", "/Applications/Claude.app/Contents/Resources/smol-bin.arm64.img"]
+        #expect(VirtualMachineOwner.resolve(openFiles: inBundle, home: home) == .bundle("/Applications/Claude.app"))
+        let inSupport = ["\(home)/.cache/x", "\(home)/Library/Application Support/Docker/vms/0/data/Docker.raw"]
+        #expect(VirtualMachineOwner.resolve(openFiles: inSupport, home: home) == .folder("Docker"))
+        #expect(VirtualMachineOwner.resolve(openFiles: ["\(home)/.antigravity/extensions/lib"], home: home) == .folder("Antigravity"))
+        #expect(VirtualMachineOwner.resolve(openFiles: ["/System/Library/CoreServices/SystemVersion.bundle/x"], home: home) == nil)
+    }
+
+    @Test func filesLeftoverVirtualMachineUnderItsAppNotMacOS() throws {
+        let grouper = AppGrouper(openFiles: { _ in ["/Applications/Claude.app/Contents/Resources/smol-bin.arm64.img"] })
+        let group = try #require(grouper.group([vm(pid: 900, responsible: 12345)], regularAppPids: []).first)
+        #expect(group.kind == .background)
+        #expect(group.bundlePath == "/Applications/Claude.app")
+        #expect(group.processes.first?.title == "Virtual machine")
+        #expect(group.processes.first?.subtitle == "Its app has quit")
+    }
+
+    @Test func namesVirtualMachineByFolderWhenNoAppHoldsIt() throws {
+        let grouper = AppGrouper(openFiles: { _ in ["\(NSHomeDirectory())/.antigravity/extensions/lib"] })
+        let group = try #require(grouper.group([vm(pid: 901, responsible: 901)], regularAppPids: []).first)
+        #expect(group.name == "Virtual machine (Antigravity)")
+        #expect(group.kind == .background)
+        #expect(group.processes.first?.subtitle == nil)
+    }
+}
+
+@Suite struct OpenFileTests {
+    @Test func listsFilesThisProcessHoldsOpen() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "herd-open-\(UUID().uuidString).img")
+        FileManager.default.createFile(atPath: url.path, contents: Data([1]))
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close(); try? FileManager.default.removeItem(at: url) }
+        let open = ProcessIntrospection.openFilePaths(getpid())
+        #expect(open.contains { $0.hasSuffix(url.lastPathComponent) })
+    }
+}

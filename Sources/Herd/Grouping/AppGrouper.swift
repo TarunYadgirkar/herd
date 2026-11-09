@@ -7,6 +7,7 @@ final class AppGrouper {
         case project(String)
         case runtime(Runtime, launcher: String?)
         case standalone(String)
+        case virtualMachine(owner: String?)
     }
 
     private struct Assignment {
@@ -31,14 +32,16 @@ final class AppGrouper {
     private var ancestors: [String: AncestorEntry] = [:]
     private var nextAncestors: [String: AncestorEntry] = [:]
     private let projects: ProjectResolver
+    private let openFiles: @Sendable (pid_t) -> [String]
 
     private struct AncestorEntry {
         let excluding: String?
         let bundle: String?
     }
 
-    init(projects: ProjectResolver = ProjectResolver()) {
+    init(projects: ProjectResolver = ProjectResolver(), openFiles: @escaping @Sendable (pid_t) -> [String] = ProcessIntrospection.openFilePaths) {
         self.projects = projects
+        self.openFiles = openFiles
     }
 
     func group(_ samples: [ProcessSample], regularAppPids: Set<pid_t>) -> [AppGroup] {
@@ -70,6 +73,7 @@ final class AppGrouper {
     }
 
     private func assign(_ sample: ProcessSample, byPid: [pid_t: ProcessSample]) -> Assignment {
+        if VirtualMachineOwner.isVirtualMachine(sample.path) { return assignVirtualMachine(sample, byPid: byPid) }
         if let runtime = standaloneRuntime(sample) {
             let label = ScriptLabel.make(runtime: runtime, arguments: sample.arguments, workingDirectory: sample.workingDirectory)
             let target: Target = projects.project(for: sample).map { .project($0) } ?? .runtime(runtime, launcher: launcherBundle(of: sample, byPid: byPid))
@@ -104,6 +108,21 @@ final class AppGrouper {
         return "\(assignment.key)|\(path)"
     }
 
+    // A VM whose app has quit keeps its memory until something stops it, so it is filed under its owner instead of macOS.
+    private func assignVirtualMachine(_ sample: ProcessSample, byPid: [pid_t: ProcessSample]) -> Assignment {
+        let title = VirtualMachineOwner.title
+        if let app = responsibleBundle(for: sample, ownBundle: nil, byPid: byPid) {
+            return makeAssignment(.bundle(app), title: title, path: sample.path)
+        }
+        let isLeftBehind = sample.responsiblePid != sample.pid && byPid[sample.responsiblePid] == nil
+        let note = isLeftBehind ? "Its app has quit" : nil
+        switch VirtualMachineOwner.resolve(openFiles: openFiles(sample.pid)) {
+        case .bundle(let app): return makeAssignment(.bundle(app), title: title, subtitle: note, path: sample.path)
+        case .folder(let name): return makeAssignment(.virtualMachine(owner: name), title: title, subtitle: note, path: sample.path)
+        case nil: return makeAssignment(.virtualMachine(owner: nil), title: title, subtitle: note, path: sample.path)
+        }
+    }
+
     private func makeAssignment(_ target: Target, title: String, subtitle: String? = nil, path: String) -> Assignment {
         Assignment(target: target, key: key(for: target), title: title, subtitle: subtitle, path: path)
     }
@@ -122,6 +141,7 @@ final class AppGrouper {
             return members.lazy.compactMap { self.cachedAncestorBundle(of: $0.sample, excluding: path, byPid: byPid) }.first
         case .standalone:
             return members.lazy.compactMap { self.cachedAncestorBundle(of: $0.sample, excluding: nil, byPid: byPid) }.first
+        case .virtualMachine: return nil
         }
     }
 
@@ -205,6 +225,10 @@ final class AppGrouper {
             let isSystem = members.allSatisfy { isSystemProcess($0.sample) }
             return AppGroup(id: key, name: name, kind: isSystem ? .system : .background, bundlePath: nil, runtime: nil,
                             mainPid: members.map(\.sample.pid).min(), processes: members, metrics: metrics, project: nil)
+        case .virtualMachine(let owner):
+            let name = owner.map { "\(VirtualMachineOwner.title) (\($0))" } ?? VirtualMachineOwner.title
+            return AppGroup(id: key, name: name, kind: .background, bundlePath: nil, runtime: nil,
+                            mainPid: members.map(\.sample.pid).min(), processes: members, metrics: metrics, project: nil)
         }
     }
 
@@ -214,6 +238,7 @@ final class AppGrouper {
         case .project(let root): "project:\(root)"
         case .runtime(let runtime, let launcher): "runtime:\(runtime.rawValue)" + (launcher.map { "|\(bundleKey($0))" } ?? "")
         case .standalone(let name): "proc:\(name)"
+        case .virtualMachine(let owner): "vm:\(owner ?? "unknown")"
         }
     }
 

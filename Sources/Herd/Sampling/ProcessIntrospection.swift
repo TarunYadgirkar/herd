@@ -24,6 +24,22 @@ enum ProcessIntrospection {
         return responsible > 0 ? responsible : pid
     }
 
+    static func openFilePaths(_ pid: pid_t) -> [String] {
+        let size = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+        guard size > 0 else { return [] }
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: Int(size) / stride)
+        let filled = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &fds, size)
+        guard filled > 0 else { return [] }
+        return fds.prefix(Int(filled) / stride).compactMap { fd in
+            guard fd.proc_fdtype == UInt32(PROX_FDTYPE_VNODE) else { return nil }
+            var info = vnode_fdinfowithpath()
+            let infoSize = Int32(MemoryLayout<vnode_fdinfowithpath>.size)
+            guard proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDVNODEPATHINFO, &info, infoSize) == infoSize else { return nil }
+            return withUnsafeBytes(of: info.pvip.vip_path) { String(decoding: $0.prefix(while: { $0 != 0 }), as: UTF8.self) }
+        }
+    }
+
     static func argumentBufferSize() -> Int {
         var argMax: Int32 = 0
         var size = MemoryLayout<Int32>.size
