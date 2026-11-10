@@ -103,8 +103,9 @@ enum Format {
         value < 10 ? String(format: "%.1f%%", value) : String(format: "%.0f%%", value)
     }
 
+    // Precision follows the size of the number, not its sign: a battery draining at 52 W reads -52.5 W, not -52.46 W.
     static func watts(_ value: Double) -> String {
-        value < 10 ? String(format: "%.2f W", value) : String(format: "%.1f W", value)
+        abs(value) < 10 ? String(format: "%.2f W", value) : String(format: "%.1f W", value)
     }
 
     static func duration(_ seconds: TimeInterval) -> String {

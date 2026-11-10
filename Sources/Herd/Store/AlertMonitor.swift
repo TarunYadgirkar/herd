@@ -108,10 +108,15 @@ final class AlertMonitor {
             notify(
                 key: "cpu:\(group.id)", group: group, at: now,
                 title: "\(group.name) is working hard",
-                body: "It has used over \(Int(threshold))% CPU for \(Int(AlertSettings.cpuMinutes)) minutes. Quit it if you're not expecting this."
+                body: "It has used over \(Int(threshold))% CPU for \(Self.minutes(AlertSettings.cpuMinutes)). Quit it if you're not expecting this."
             )
         }
         cpuStreaks = next
+    }
+
+    static func minutes(_ count: Double) -> String {
+        let whole = Int(count)
+        return whole == 1 ? "a minute" : "\(whole) minutes"
     }
 
     private func checkMemoryGrowth(_ groups: [AppGroup], at now: Date) {

@@ -35,6 +35,7 @@ struct ContentView: View {
     @State private var hold = OrderHold()
     @State private var cache = RowCache()
     @State private var showInspector = false
+    @FocusState private var isSearchFocused: Bool
     @AppStorage("scope") private var scope: Scope = .all
     @AppStorage("treeView") private var isTree = false
 
@@ -55,16 +56,21 @@ struct ContentView: View {
                 trendColumn: trendColumn,
                 actions: actions,
                 onOpen: { showInspector = true },
-                isSearching: !query.trimmingCharacters(in: .whitespaces).isEmpty,
+                isSearching: isSearching,
                 isTree: isTree
             )
             .equatable()
+            .overlay {
+                if rows.isEmpty && isSearching { ContentUnavailableView.search(text: trimmedQuery) }
+            }
         }
+        .background(findShortcut)
         .inspector(isPresented: $showInspector) {
             InspectorView(groupID: inspectedGroupID, processID: selectedProcessID)
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 460)
         }
-        .searchable(text: $query, placement: .toolbar)
+        .searchable(text: $query, placement: .toolbar, prompt: "Search processes")
+        .searchFocused($isSearchFocused)
         .toolbar { toolbar }
         .navigationTitle("Processes")
         .navigationSubtitle(countSummary)
@@ -116,7 +122,21 @@ struct ContentView: View {
     private var countSummary: String {
         let groups = store.groups.filter { scope.includes($0.kind) }
         let processes = groups.reduce(0) { $0 + $1.processes.count }
-        return "\(processes) processes in \(groups.count) groups"
+        let summary = "\(processes) processes in \(groups.count) groups"
+        return store.isPaused ? "Paused · \(summary)" : summary
+    }
+
+    private var trimmedQuery: String { query.trimmingCharacters(in: .whitespaces) }
+
+    private var isSearching: Bool { !trimmedQuery.isEmpty }
+
+    // The toolbar search field has no shortcut of its own, so an invisible button gives it the usual ⌘F.
+    private var findShortcut: some View {
+        Button("Find") { isSearchFocused = true }
+            .keyboardShortcut("f", modifiers: .command)
+            .opacity(0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     // Reading groups on every pass keeps this view subscribed to new frames even when the cached rows are reused.

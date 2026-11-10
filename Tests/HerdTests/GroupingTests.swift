@@ -109,6 +109,42 @@ import Testing
     }
 }
 
+@Suite struct RuntimeLauncherLabelTests {
+    private func process(pid: pid_t, responsible: pid_t, path: String, arguments: [String] = []) -> ProcessSample {
+        ProcessSample(
+            id: "\(pid)", pid: pid, ppid: 1, responsiblePid: responsible, uid: getuid(), name: (path as NSString).lastPathComponent,
+            path: path, arguments: arguments, startTime: nil, cpuPercent: 0, memoryBytes: 1, energyWatts: 0, diskReadBps: 0,
+            diskWriteBps: 0, netInBps: 0, netOutBps: 0, gpuPercent: 0, threads: 1, isApproximate: false, isSuspended: false
+        )
+    }
+
+    private func makeApp(_ name: String, in folder: URL) throws -> String {
+        let contents = folder.appending(path: "\(name).app/Contents")
+        try FileManager.default.createDirectory(at: contents.appending(path: "MacOS"), withIntermediateDirectories: true)
+        let plist = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": "com.example.launcher"], format: .xml, options: 0)
+        try plist.write(to: contents.appending(path: "Info.plist"))
+        return folder.appending(path: "\(name).app").path
+    }
+
+    @Test func namesSharedRuntimeGroupTheSameWhicheverLauncherComesFirst() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "herd-launchers-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let alpha = try makeApp("Alpha", in: folder)
+        let beta = try makeApp("Beta", in: folder)
+        let samples = [
+            process(pid: 10, responsible: 10, path: "\(alpha)/Contents/MacOS/Alpha"),
+            process(pid: 20, responsible: 20, path: "\(beta)/Contents/MacOS/Beta"),
+            process(pid: 11, responsible: 10, path: "/usr/local/bin/node", arguments: ["node", "a.js"]),
+            process(pid: 21, responsible: 20, path: "/usr/local/bin/node", arguments: ["node", "b.js"]),
+        ]
+        let names = try [samples, Array(samples.reversed())].map { order in
+            let groups = AppGrouper().group(order, regularAppPids: [])
+            return try #require(groups.first { $0.runtime == .node }).name
+        }
+        #expect(names == ["Node.js (via Alpha)", "Node.js (via Alpha)"])
+    }
+}
+
 @Suite struct OpenFileTests {
     @Test func listsFilesThisProcessHoldsOpen() throws {
         let url = FileManager.default.temporaryDirectory.appending(path: "herd-open-\(UUID().uuidString).img")

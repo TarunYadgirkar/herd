@@ -26,10 +26,6 @@ private enum MenuBarFormat {
     }
 }
 
-extension Notification.Name {
-    static let openMainWindow = Notification.Name("HerdOpenMainWindow")
-}
-
 struct MenuBarLabel: View {
     let store: MonitorStore
     @AppStorage("menuBarLabelStyle") private var style: MenuBarLabelStyle = .cpuAndMemory
@@ -37,13 +33,11 @@ struct MenuBarLabel: View {
 
     private static let appSymbol = "gauge.with.dots.needle.33percent"
 
-    // The label lives as long as the app, so it can reopen the main window after it was closed (e.g. from a notification).
+    // The label lives as long as the menu bar item, so it can reopen the main window after it was closed (e.g. from a
+    // notification). MenuBarExtra labels don't reliably get onAppear, so the action is handed over while drawing.
     var body: some View {
+        let _ = MainWindowOpener.capture(openWindow)
         label
-            .onReceive(NotificationCenter.default.publisher(for: .openMainWindow)) { _ in
-                openWindow(id: "main")
-                NSApp.activate()
-            }
     }
 
     @ViewBuilder

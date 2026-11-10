@@ -2,32 +2,56 @@ import SwiftUI
 import UserNotifications
 
 struct SettingsView: View {
+    private static let width: CGFloat = 480
+
+    var body: some View {
+        TabView {
+            Tab("General", systemImage: "gearshape") { GeneralSettings() }
+            Tab("Alerts", systemImage: "bell.badge") { AlertSettingsPane() }
+            Tab("Other Macs", systemImage: "laptopcomputer.and.arrow.down") { RemoteSettings() }
+        }
+        .formStyle(.grouped)
+        .frame(width: Self.width)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct SettingsFooter: View {
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.captionText)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct GeneralSettings: View {
     @Environment(MonitorStore.self) private var store
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
     @AppStorage("autoOpenInspector") private var autoOpenInspector = false
     @AppStorage("menuBarLabelStyle") private var menuBarLabelStyle: MenuBarLabelStyle = .cpuAndMemory
-    @AppStorage(AlertSettings.enabledKey) private var alertsEnabled = true
     @AppStorage(DockGraphSettings.enabledKey) private var dockGraph = false
-    @AppStorage(AlertSettings.cpuThresholdKey) private var cpuThreshold = AlertSettings.defaultCPUThreshold
-    @AppStorage(AlertSettings.cpuMinutesKey) private var cpuMinutes = AlertSettings.defaultCPUMinutes
-    @AppStorage(RemoteMonitor.shareKey) private var shareStats = false
-    @AppStorage(RemoteMonitor.hostsKey) private var remoteHosts = ""
-
-    @State private var notificationStatus: UNAuthorizationStatus?
-
-    private static let thresholds: [Double] = [50, 80, 90, 150, 200, 400]
-    private static let durations: [Double] = [1, 3, 5, 10]
 
     var body: some View {
         @Bindable var store = store
         Form {
-            Section("General") {
+            Section {
                 Picker(selection: $store.powerMode) {
                     ForEach(PowerMode.allCases) { Text($0.title).tag($0) }
                 } label: {
                     PowerModeLabel(effort: store.effort, mode: store.powerMode)
                 }
-                Toggle("Open details on select", isOn: $autoOpenInspector)
+            } footer: {
+                SettingsFooter(Self.modeHelp)
+            }
+            Section {
+                Toggle("Open details when a row is selected", isOn: $autoOpenInspector)
                 Toggle("CPU graph in Dock", isOn: $dockGraph)
             }
             Section("Menu bar") {
@@ -37,41 +61,106 @@ struct SettingsView: View {
                 }
                 .disabled(!showMenuBarExtra)
             }
-            Section("System processes") {
+            Section {
                 RootHelperRow()
+            } header: {
+                Text("System processes")
+            } footer: {
+                SettingsFooter(
+                    "A small helper that runs as root reads exact numbers for system processes. "
+                        + "Without it they update every 10 seconds, with no power or disk figures."
+                )
             }
-            Section("Alerts") {
+        }
+    }
+
+    private static var modeHelp: String {
+        let light = Int(SamplingEffort.efficient.interval.rawValue)
+        let full = Int(SamplingEffort.precise.interval.rawValue)
+        return "Light updates every \(light) seconds and uses the least power. Full updates every \(full == 1 ? "second" : "\(full) seconds") "
+            + "to catch short spikes. Automatic uses Full on the power adapter and Light on battery."
+    }
+}
+
+private struct AlertSettingsPane: View {
+    @AppStorage(AlertSettings.enabledKey) private var alertsEnabled = true
+    @AppStorage(AlertSettings.cpuThresholdKey) private var cpuThreshold = AlertSettings.defaultCPUThreshold
+    @AppStorage(AlertSettings.cpuMinutesKey) private var cpuMinutes = AlertSettings.defaultCPUMinutes
+
+    @State private var notificationStatus: UNAuthorizationStatus?
+    @State private var ignoredCount = AlertSettings.ignoredGroups.count
+
+    private static let thresholds: [Double] = [50, 80, 90, 150, 200, 400]
+    private static let durations: [Double] = [1, 3, 5, 10]
+
+    var body: some View {
+        Form {
+            Section {
                 Toggle("Runaway app alerts", isOn: $alertsEnabled)
                 NotificationStatusRow(status: notificationStatus)
+            }
+            Section {
                 Picker("CPU above", selection: $cpuThreshold) {
                     ForEach(Self.thresholds, id: \.self) { Text("\(Int($0))%").tag($0) }
                 }
-                .help("100% = one core")
-                .disabled(!alertsEnabled)
                 Picker("For", selection: $cpuMinutes) {
                     ForEach(Self.durations, id: \.self) { Text("\(Int($0)) min").tag($0) }
                 }
-                .disabled(!alertsEnabled)
-                Button("Reset Ignored Apps") { UserDefaults.standard.removeObject(forKey: AlertSettings.ignoredKey) }
-                    .disabled(AlertSettings.ignoredGroups.isEmpty)
+            } footer: {
+                SettingsFooter("100% is one full core, so 200% means two cores busy the whole time.")
             }
+            .disabled(!alertsEnabled)
+            Section {
+                LabeledContent(ignoredTitle) {
+                    Button("Reset") {
+                        UserDefaults.standard.removeObject(forKey: AlertSettings.ignoredKey)
+                        ignoredCount = 0
+                    }
+                    .disabled(ignoredCount == 0)
+                }
+            } footer: {
+                SettingsFooter("Apps you silenced from an alert stay quiet until you reset them.")
+            }
+        }
+        .task { await refreshNotificationStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            ignoredCount = AlertSettings.ignoredGroups.count
+            Task { await refreshNotificationStatus() }
+        }
+    }
+
+    private var ignoredTitle: String {
+        switch ignoredCount {
+        case 0: "No ignored apps"
+        case 1: "1 ignored app"
+        default: "\(ignoredCount) ignored apps"
+        }
+    }
+
+    private func refreshNotificationStatus() async {
+        notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+}
+
+private struct RemoteSettings: View {
+    @AppStorage(RemoteMonitor.shareKey) private var shareStats = false
+    @AppStorage(RemoteMonitor.hostsKey) private var remoteHosts = ""
+
+    var body: some View {
+        Form {
             Section {
                 Toggle("Share this Mac's stats", isOn: $shareStats)
                     .onChange(of: shareStats) { _, isOn in AppDelegate.remoteServer.setEnabled(isOn) }
-                TextField("Watch Macs", text: $remoteHosts, prompt: Text("Tailscale names, like old-macbook"))
-                    .onSubmit { AppDelegate.remote.refreshNow() }
-            } header: {
-                Text("Other Macs")
             } footer: {
-                Text("Uses Tailscale. Only devices on your tailnet can read the shared stats (port \(String(RemoteNetwork.port))).")
-                    .font(.captionText)
-                    .foregroundStyle(.secondary)
+                SettingsFooter("Uses Tailscale. Only devices on your tailnet can read the shared stats (port \(String(RemoteNetwork.port))).")
+            }
+            Section {
+                TextField("Watch Macs", text: $remoteHosts, prompt: Text("old-macbook, mac-mini"))
+                    .onSubmit { AppDelegate.remote.refreshNow() }
+            } footer: {
+                SettingsFooter("Tailscale names separated by commas. Each Mac needs Herd running with sharing turned on.")
             }
         }
-        .formStyle(.grouped)
-        .task { notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus }
-        .frame(width: 460)
-        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

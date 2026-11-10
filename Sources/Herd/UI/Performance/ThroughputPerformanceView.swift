@@ -46,6 +46,10 @@ enum ThroughputKind {
         self == .network ? point.netOut : point.diskWrite
     }
 
+    func usage(_ app: AppUsage) -> Double {
+        self == .network ? app.networkBytes : app.diskBytes
+    }
+
     func liveRates(_ system: SystemSnapshot) -> (in: Double, out: Double) {
         self == .network ? (system.netInBps, system.netOutBps) : (system.diskReadBps, system.diskWriteBps)
     }
@@ -54,6 +58,7 @@ enum ThroughputKind {
 struct ThroughputPerformanceView: View {
     let context: PerformanceContext
     let kind: ThroughputKind
+    let usage: [AppUsage]
 
     var body: some View {
         let live = kind.liveRates(context.system)
@@ -76,6 +81,7 @@ struct ThroughputPerformanceView: View {
             context: context,
             height: 220
         )
+        ThroughputTodayCard(kind: kind, usage: usage)
     }
 
     private var stats: [PerformanceStat] {
@@ -85,5 +91,49 @@ struct ThroughputPerformanceView: View {
             PerformanceStat(label: "Peak \(kind.inName.lowercased())", value: Format.rate(context.peak { kind.inRate($0) } ?? 0)),
             PerformanceStat(label: "Peak \(kind.outName.lowercased())", value: Format.rate(context.peak { kind.outRate($0) } ?? 0)),
         ]
+    }
+}
+
+// Which apps moved the most data today, so a busy graph can be traced to its cause.
+private struct ThroughputTodayCard: View {
+    let kind: ThroughputKind
+    let usage: [AppUsage]
+
+    private static let rowLimit = 10
+    private static let barHeight: CGFloat = 6
+    private static let barWidth: CGFloat = 160
+
+    var body: some View {
+        let rows = usage.filter { kind.usage($0) > 0 }.sorted { kind.usage($0) > kind.usage($1) }.prefix(Self.rowLimit)
+        PerformanceCard(title: "Today by app") {
+            if let top = rows.first.map(kind.usage) {
+                Grid(alignment: .leading, horizontalSpacing: Theme.groupSpacing, verticalSpacing: Theme.itemSpacing) {
+                    ForEach(rows) { row in
+                        GridRow {
+                            UsageAppLabel(usage: row)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            bar(kind.usage(row) / top)
+                            Text(PerformanceFormat.bytes(kind.usage(row)))
+                                .font(.metric)
+                                .gridColumnAlignment(.trailing)
+                        }
+                    }
+                }
+            } else {
+                ChartMessage(text: PerformanceCopy.collecting, height: 80)
+            }
+        }
+    }
+
+    private func bar(_ fraction: Double) -> some View {
+        Capsule()
+            .fill(Theme.track)
+            .frame(width: Self.barWidth, height: Self.barHeight)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(ChartPalette.download)
+                    .frame(width: max(Self.barWidth * fraction, Self.barHeight))
+            }
+            .accessibilityHidden(true)
     }
 }

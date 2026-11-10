@@ -20,14 +20,18 @@ struct ProjectsView: View {
     private func content(_ report: ProjectReport, ledger: ActivityLedger) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.groupSpacing) {
+                // Leftovers lead only while there is something to clean up; otherwise the long list of kept copies
+                // would push the projects themselves off the first screen.
+                let hasLeftovers = !report.leftovers.isEmpty
                 ProjectSummaryBar(report: report)
-                LeftoversSection(report: report)
+                if hasLeftovers { LeftoversSection(report: report) }
                 if !report.projects.isEmpty {
                     ProjectList(title: "Projects", summaries: report.projects, ledger: ledger)
                 }
                 if !report.unowned.isEmpty {
                     ProjectList(title: "No Project", summaries: report.unowned, ledger: ledger)
                 }
+                if !hasLeftovers { LeftoversSection(report: report) }
             }
             .padding(Theme.groupSpacing)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -40,8 +44,9 @@ private struct ProjectSummaryBar: View {
 
     var body: some View {
         HStack(spacing: Theme.groupSpacing * 1.5) {
-            GlyphStat(symbol: "folder", value: "\(report.projects.count)", label: "\(report.projects.count) projects")
-            GlyphStat(symbol: "memorychip", value: Format.bytes(report.totalMemory), label: "\(Format.bytes(report.totalMemory)) memory")
+            let count = report.projects.count
+            GlyphStat(symbol: "folder", value: "\(count)", caption: count == 1 ? "project" : "projects")
+            GlyphStat(symbol: "memorychip", value: Format.bytes(report.totalMemory), caption: "memory")
             leftoverStat
             Spacer(minLength: 0)
         }
@@ -51,10 +56,13 @@ private struct ProjectSummaryBar: View {
     private var leftoverStat: some View {
         let count = report.leftovers.count
         if count == 0 {
-            GlyphStat(symbol: "checkmark.circle", value: "0", label: "No leftovers", tint: Theme.good)
+            GlyphStat(symbol: "checkmark.circle", value: "0", caption: "leftovers", tint: Theme.good)
         } else {
             let reclaim = Format.bytes(report.reclaimableMemory)
-            GlyphStat(symbol: "xmark.bin", value: "\(count)", detail: reclaim, label: "\(count) leftovers, \(reclaim) reclaimable", tint: Theme.warning)
+            GlyphStat(
+                symbol: "xmark.bin", value: "\(count)", caption: "\(count == 1 ? "leftover" : "leftovers") · \(reclaim) to free",
+                tint: Theme.warning
+            )
         }
     }
 }
@@ -62,8 +70,7 @@ private struct ProjectSummaryBar: View {
 private struct GlyphStat: View {
     let symbol: String
     let value: String
-    var detail: String?
-    let label: String
+    let caption: String
     var tint: Color = .secondary
 
     var body: some View {
@@ -72,15 +79,11 @@ private struct GlyphStat: View {
                 .foregroundStyle(tint)
             Text(value)
                 .font(.displaySmall)
-            if let detail {
-                Text(detail)
-                    .font(.metric)
-                    .foregroundStyle(.secondary)
-            }
+            Text(caption)
+                .font(.calloutText)
+                .foregroundStyle(.secondary)
         }
-        .help(label)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -63,7 +63,11 @@ final class AppGrouper {
         let canonical = canonicalBundlePaths(assigned, regularAppPids: regularAppPids)
         for (sample, assignment) in assigned {
             let member = GroupedProcess(sample: sample, title: assignment.title, subtitle: assignment.subtitle)
-            buckets[bucketKey(assignment, canonical: canonical), default: (assignment.target, [])].members.append(member)
+            let key = bucketKey(assignment, canonical: canonical)
+            buckets[key, default: (assignment.target, [])].members.append(member)
+            if case .runtime = assignment.target, let current = buckets[key]?.target {
+                buckets[key]?.target = Self.steadierRuntime(current, assignment.target)
+            }
         }
         return buckets.map { key, bucket in
             var group = makeGroup(key: key, target: bucket.target, members: bucket.members, regularAppPids: regularAppPids)
@@ -106,6 +110,16 @@ final class AppGrouper {
     private func bucketKey(_ assignment: Assignment, canonical: [String: String]) -> String {
         guard case .bundle(let path) = assignment.target, let keeper = canonical[assignment.key], keeper != path else { return assignment.key }
         return "\(assignment.key)|\(path)"
+    }
+
+    // Two copies of a launcher that share a bundle identifier land in one runtime group, and whichever process came first
+    // used to name it, so the "via X" label and icon could flip between ticks. The copy in /Applications wins, then the
+    // lower path, so the label holds still.
+    private static func steadierRuntime(_ current: Target, _ candidate: Target) -> Target {
+        guard case .runtime(_, let currentLauncher?) = current, case .runtime(_, let candidateLauncher?) = candidate,
+              currentLauncher != candidateLauncher else { return current }
+        let rank = { (path: String) in (path.hasPrefix("/Applications/") ? 0 : 1, path) }
+        return rank(candidateLauncher) < rank(currentLauncher) ? candidate : current
     }
 
     // A VM whose app has quit keeps its memory until something stops it, so it is filed under its owner instead of macOS.
