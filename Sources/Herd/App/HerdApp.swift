@@ -13,6 +13,7 @@ struct HerdApp: App {
         Window("Herd", id: "main") {
             RootView()
                 .herdStyle()
+                .capturesMainWindowOpener()
                 .environment(store)
                 .environment(actions)
                 .environment(AppDelegate.remote)
@@ -38,6 +39,7 @@ struct HerdApp: App {
         WindowGroup("Process Info", id: "process-info", for: String.self) { $processID in
             ProcessInfoView(processID: processID)
                 .herdStyle()
+                .capturesMainWindowOpener()
                 .environment(store)
                 .environment(actions)
                 .environment(\.historySamples, store.historySamples)
@@ -49,6 +51,7 @@ struct HerdApp: App {
         Window("Herd Mini", id: "mini") {
             MiniMonitorView()
                 .herdStyle()
+                .capturesMainWindowOpener()
                 .environment(store)
                 .environment(\.historySamples, store.historySamples)
         }
@@ -61,6 +64,7 @@ struct HerdApp: App {
         Settings {
             SettingsView()
                 .herdStyle()
+                .capturesMainWindowOpener()
                 .environment(store)
         }
     }
@@ -96,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let groupID = response.notification.request.content.userInfo[AlertAction.groupKey] as? String
         await MainActor.run {
             guard let groupID else {
-                NotificationCenter.default.post(name: .openMainWindow, object: nil)
+                MainWindowOpener.open()
                 return
             }
             switch action {
@@ -107,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 AlertSettings.ignore(groupID)
             default:
                 Self.store.requestedSelection = groupID
-                NotificationCenter.default.post(name: .openMainWindow, object: nil)
+                MainWindowOpener.open()
             }
         }
     }

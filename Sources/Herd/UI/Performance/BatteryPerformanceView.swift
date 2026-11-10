@@ -13,7 +13,7 @@ struct BatteryPerformanceView: View {
                 symbol: BatteryGlyph.symbol(percent: percent, isPowered: isCharging || isOnAC),
                 symbolTint: BatteryGlyph.tint(percent: percent, isCharging: isCharging, isOnAC: isOnAC),
                 symbolLabel: status,
-                caption: remaining.map { Text($0) },
+                caption: Text(caption),
                 stats: headlineStats
             )
             PerformanceChart(
@@ -66,14 +66,33 @@ struct BatteryPerformanceView: View {
         return remaining.map { "On battery, \($0) left" } ?? "On battery"
     }
 
+    // A bare "11h 51m" under the charge doesn't say whether that is time left or time until full.
+    private var caption: String {
+        if isCharging { return remaining.map { "Full in \($0)" } ?? "Charging" }
+        if isOnAC { return "Plugged in" }
+        return remaining.map { "\($0) left" } ?? "On battery"
+    }
+
     private var headlineStats: [PerformanceStat] {
         guard let details = system.batteryDetails else { return [] }
         return [
             BatteryHealth.stat(details),
             details.cycleCount.map { PerformanceStat(label: "Cycles", value: "\($0)") },
-            details.watts.map { PerformanceStat(label: "Power", value: Format.watts($0), tint: $0 >= 0 ? Theme.good : nil) },
+            details.watts.map { Self.flowStat($0) },
         ]
         .compactMap { $0 }
+    }
+}
+
+extension BatteryPerformanceView {
+    // The sign of the battery's power is its direction, which a label says more plainly than a minus sign.
+    static func flowStat(_ watts: Double) -> PerformanceStat {
+        PerformanceStat(
+            label: watts > 0 ? "Charging at" : "Using",
+            value: Format.watts(abs(watts)),
+            help: watts > 0 ? "Power going into the battery" : "Power the Mac is drawing from the battery",
+            tint: watts > 0 ? Theme.good : nil
+        )
     }
 }
 
@@ -133,7 +152,6 @@ private struct BatteryDetailsCard: View {
 
     private var stats: [PerformanceStat] {
         let entries: [(String, String?)] = [
-            ("Cycles", details.cycleCount.map { "\($0)" }),
             ("Max capacity", details.maxCapacityMAh.map(Self.milliampHours)),
             ("Design capacity", details.designCapacityMAh.map(Self.milliampHours)),
             ("Voltage", details.voltage.map { String(format: "%.2f V", $0) }),
@@ -141,8 +159,8 @@ private struct BatteryDetailsCard: View {
             ("Charger", details.adapterWatts.map { String(format: "%.0f W", $0) }),
             ("Temperature", details.celsius.map(PerformanceFormat.temperature)),
         ]
-        let rest = entries.compactMap { label, value in value.map { PerformanceStat(label: label, value: $0) } }
-        return [BatteryHealth.stat(details)].compactMap { $0 } + rest
+        // Health and cycle count are in the page header, so the card holds only what isn't shown above it.
+        return entries.compactMap { label, value in value.map { PerformanceStat(label: label, value: $0) } }
     }
 
     private static func milliampHours(_ value: Int) -> String {
