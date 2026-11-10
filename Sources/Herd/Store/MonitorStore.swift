@@ -245,7 +245,9 @@ final class MonitorStore {
         dockGraph.update(cpu: frame.system.cpuTotal)
         let nextHeadline = Headline(cpu: frame.system.cpuTotal, memoryUsed: frame.system.memoryUsed)
         if nextHeadline != headline { headline = nextHeadline }
-        if isDetailVisible { publishDetail() }
+        // A window opened where it can't be seen yet (another Space, behind a full-screen app) still gets one set of rows,
+        // so it never claims there are no processes; after that, per-app data waits until someone can see it.
+        if isDetailVisible || groups.isEmpty { publishDetail() }
         hasFirstFrame = true
     }
 

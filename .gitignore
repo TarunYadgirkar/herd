@@ -3,3 +3,8 @@ build/
 *.app
 .DS_Store
 .swiftpm/
+
+# Local screenshots that show real process names
+assets/generated/stress-*.png
+assets/generated/herd-projects.png
+assets/generated/herd-settings.png
