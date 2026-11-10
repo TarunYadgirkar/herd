@@ -10,16 +10,22 @@ struct LeftoversSection: View {
     @Environment(ActionController.self) private var actions
 
     var body: some View {
-        PerformanceCard(title: "Leftovers") {
+        PerformanceCard(title: "Duplicates and leftovers") {
             stopButton
         } content: {
             if report.duplicates.isEmpty && report.orphans.isEmpty {
                 Label {
-                    Text("No leftovers").foregroundStyle(.secondary)
+                    Text("No duplicate tools or leftovers").foregroundStyle(.secondary)
                 } icon: {
                     Image(systemName: "checkmark.circle").foregroundStyle(Theme.good)
                 }
             } else {
+                if report.leftovers.isEmpty {
+                    Text("Nothing here is safe to stop: each copy is the one its open session is still using.")
+                        .font(.captionText)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 grid
             }
         }
@@ -33,7 +39,7 @@ struct LeftoversSection: View {
         }
         .controlSize(.small)
         .disabled(leftovers.isEmpty)
-        .help("Quit every copy marked idle or orphaned")
+        .help(leftovers.isEmpty ? "Nothing is idle or orphaned right now" : "Quit every copy that is idle or whose launcher quit")
     }
 
     private var grid: some View {
