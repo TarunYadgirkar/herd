@@ -102,8 +102,19 @@ struct MobileDevice: Sendable {
                 label: nil,
                 percent: Double(min(max(percent, 0), 100)),
                 isCharging: value(device, Self.batteryDomain, "BatteryIsCharging") as? Bool ?? false
-            )]
+            )],
+            details: details(device, deviceClass: deviceClass)
         )
+    }
+
+    private func details(_ device: Device, deviceClass: String?) -> [DeviceBattery.Detail] {
+        let entries: [(String, String?)] = [
+            ("Type", deviceClass),
+            ("Model", value(device, nil, "ProductType") as? String),
+            ("Software", value(device, nil, "ProductVersion") as? String),
+            ("Fully charged", (value(device, Self.batteryDomain, "FullyCharged") as? Bool).map { $0 ? "Yes" : "No" }),
+        ]
+        return entries.compactMap { label, value in value.map { DeviceBattery.Detail(label: label, value: $0) } }
     }
 
     private func value(_ device: Device, _ domain: String?, _ key: String) -> Any? {

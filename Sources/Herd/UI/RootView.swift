@@ -6,6 +6,7 @@ enum SidebarItem: Hashable, Identifiable, RawRepresentable {
     case performance(PerformanceSection)
     case history
     case remote(String)
+    case device(String)
 
     init?(rawValue: String) {
         switch rawValue {
@@ -13,6 +14,10 @@ enum SidebarItem: Hashable, Identifiable, RawRepresentable {
         case "projects": self = .projects
         case "history": self = .history
         default:
+            if rawValue.hasPrefix(Self.devicePrefix) {
+                self = .device(String(rawValue.dropFirst(Self.devicePrefix.count)))
+                return
+            }
             if rawValue.hasPrefix(Self.remotePrefix) {
                 self = .remote(String(rawValue.dropFirst(Self.remotePrefix.count)))
                 return
@@ -30,6 +35,7 @@ enum SidebarItem: Hashable, Identifiable, RawRepresentable {
         case .history: "history"
         case .performance(let section): Self.performancePrefix + section.rawValue
         case .remote(let host): Self.remotePrefix + host
+        case .device(let id): Self.devicePrefix + id
         }
     }
 
@@ -37,6 +43,7 @@ enum SidebarItem: Hashable, Identifiable, RawRepresentable {
 
     private static let performancePrefix = "performance."
     private static let remotePrefix = "remote."
+    private static let devicePrefix = "device."
 }
 
 struct RootView: View {
@@ -84,6 +91,10 @@ struct RootView: View {
         case .remote(let host):
             RemoteMacView(host: host)
                 .navigationTitle(remote.macs[host]?.stats?.name ?? host)
+        case .device(let id):
+            let device = store.system.deviceBatteries.first { $0.id == id }
+            DeviceBatteryView(device: device)
+                .navigationTitle(device?.name ?? "Device")
         }
     }
 }
@@ -111,8 +122,9 @@ private struct Sidebar: View {
                     .tag(SidebarItem.history)
             }
             let hosts = RemoteNetwork.hosts(from: remoteHosts)
-            if !hosts.isEmpty {
-                Section("Other Macs") {
+            let devices = store.system.deviceBatteries
+            if !hosts.isEmpty || !devices.isEmpty {
+                Section("Other devices") {
                     TimelineView(.periodic(from: .now, by: 5)) { timeline in
                         ForEach(hosts, id: \.self) { host in
                             let mac = remote.macs[host]
@@ -123,6 +135,14 @@ private struct Sidebar: View {
                             )
                             .tag(SidebarItem.remote(host))
                         }
+                    }
+                    ForEach(devices) { device in
+                        SidebarRow(
+                            title: device.name,
+                            symbol: device.symbol,
+                            value: device.percent.map(Format.percent) ?? PerformanceFormat.missing
+                        )
+                        .tag(SidebarItem.device(device.id))
                     }
                 }
             }

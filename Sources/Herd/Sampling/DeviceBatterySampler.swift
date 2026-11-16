@@ -26,12 +26,12 @@ enum AccessoryBatteries {
     private static let allSources: Int32 = 0
     private static let accessoryType = "Accessory Source"
     private static let caseCategory = "Audio Battery Case"
-    private static let caseLabel = "Case"
     private static let categoryKey = "Accessory Category"
     private static let groupKey = "Group Identifier"
     private static let accessoryKey = "Accessory Identifier"
     private static let partsKey = "Combined Parts"
     private static let partKey = "Part Identifier"
+    private static let lowWarnKey = "Low Warn Level"
 
     // IOPSCopyPowerSourcesList leaves accessories out. This is the call `pmset -g accps` makes; IOKit exports it without a header.
     private static let copyByType: CopyByType? = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "IOPSCopyPowerSourcesByType")
@@ -69,8 +69,18 @@ enum AccessoryBatteries {
             id: id,
             name: main[kIOPSNameKey] as? String ?? "Accessory",
             kind: kind(main[categoryKey] as? String ?? ""),
-            cells: cells
+            cells: cells,
+            details: details(main)
         )
+    }
+
+    private static func details(_ source: [String: Any]) -> [DeviceBattery.Detail] {
+        let entries: [(String, String?)] = [
+            ("Type", source[categoryKey] as? String),
+            ("Connection", source[kIOPSTransportTypeKey] as? String),
+            ("Low battery warning", (source[lowWarnKey] as? Int).map { "At \($0)%" }),
+        ]
+        return entries.compactMap { label, value in value.map { DeviceBattery.Detail(label: label, value: $0) } }
     }
 
     private static func isCase(_ source: [String: Any]) -> Bool {
@@ -78,7 +88,7 @@ enum AccessoryBatteries {
     }
 
     private static func cells(of source: [String: Any]) -> [DeviceBattery.Cell] {
-        if isCase(source) { return [cell(source, label: caseLabel)].compactMap(\.self) }
+        if isCase(source) { return [cell(source, label: DeviceBattery.caseLabel)].compactMap(\.self) }
         if let parts = source[partsKey] as? [[String: Any]], !parts.isEmpty {
             return parts.compactMap { cell($0, label: $0[partKey] as? String) }
         }

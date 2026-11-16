@@ -30,7 +30,7 @@ private struct DeviceBatteryRow: View {
 
     var body: some View {
         HStack(spacing: Theme.itemSpacing) {
-            Image(systemName: symbol)
+            Image(systemName: device.symbol)
                 .foregroundStyle(.secondary)
                 .frame(width: Self.symbolWidth)
                 .accessibilityHidden(true)
@@ -64,10 +64,12 @@ private struct DeviceBatteryRow: View {
                 .frame(minWidth: Self.percentWidth, alignment: .trailing)
         }
     }
+}
 
-    private var symbol: String {
-        switch device.kind {
-        case .audio: device.cells.count > 1 ? "airpodspro" : "headphones"
+extension DeviceBattery {
+    var symbol: String {
+        switch kind {
+        case .audio: cells.count > 1 ? "airpodspro" : "headphones"
         case .keyboard: "keyboard"
         case .mouse: "computermouse"
         case .trackpad: "rectangle.and.hand.point.up.left"

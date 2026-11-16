@@ -32,11 +32,15 @@ import Testing
         #expect(devices.first?.cells.map(\.label) == ["Left", "Right", "Case"])
         #expect(devices.first?.cells.map(\.percent) == [90, 88, 99])
         #expect(devices.first?.cells.map(\.isCharging) == [false, true, false])
+        #expect(devices.first?.percent == 88)
     }
 
     @Test func aSingleBatteryAccessoryHasOneUnlabeledCell() {
         let devices = AccessoryBatteries.parse([Self.source("Magic Mouse", category: "Mouse", percent: 41, extra: ["Accessory Identifier": "m1"])])
-        #expect(devices == [DeviceBattery(id: "m1", name: "Magic Mouse", kind: .mouse, cells: [.init(label: nil, percent: 41, isCharging: false)])])
+        #expect(devices.map(\.id) == ["m1"])
+        #expect(devices.first?.kind == .mouse)
+        #expect(devices.first?.cells == [.init(label: nil, percent: 41, isCharging: false)])
+        #expect(devices.first?.details.first == .init(label: "Type", value: "Mouse"))
     }
 
     @Test func theMacsOwnBatteryAndAbsentAccessoriesAreLeftOut() {
