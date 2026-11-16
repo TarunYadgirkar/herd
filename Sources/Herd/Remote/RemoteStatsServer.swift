@@ -2,24 +2,31 @@ import Foundation
 import Network
 import os
 
-// Answers GET /stats with this Mac's RemoteStats as JSON, for Herd on the user's other Macs.
+// Answers GET /stats with this Mac's RemoteStats as JSON, for Herd on the user's other Macs,
+// and takes battery reports from the user's phone and watch on /battery.
 // Only Tailscale peers get an answer; everyone else is disconnected before anything is read.
 final class RemoteStatsServer: @unchecked Sendable {
     nonisolated private static let log = Logger(subsystem: "com.tarunyadgirkar.herd", category: "remote")
     private static let maxRequestBytes = 4096
+    private static let requestTimeout: DispatchTimeInterval = .seconds(5)
 
     private let queue = DispatchQueue(label: "com.tarunyadgirkar.herd.remote-server")
     private let lock = NSLock()
     private var listener: NWListener?
+    private var sharesStats = false
+    private var acceptsReports = false
     private let provider: @Sendable () async -> RemoteStats?
 
     init(provider: @escaping @Sendable () async -> RemoteStats?) {
         self.provider = provider
     }
 
-    func setEnabled(_ isEnabled: Bool) {
+    func configure(sharesStats: Bool, acceptsReports: Bool) {
         lock.lock()
         defer { lock.unlock() }
+        self.sharesStats = sharesStats
+        self.acceptsReports = acceptsReports
+        let isEnabled = sharesStats || acceptsReports
         if isEnabled, listener == nil {
             listener = makeListener()
         } else if !isEnabled {
@@ -42,23 +49,44 @@ final class RemoteStatsServer: @unchecked Sendable {
                 Self.log.error("Stats sharing stopped: \(error.localizedDescription)")
             }
         }
-        listener.newConnectionHandler = { [provider, queue] connection in
+        listener.newConnectionHandler = { [weak self, queue] connection in
             guard RemoteNetwork.isTrusted(connection.endpoint) else {
                 connection.cancel()
                 return
             }
             connection.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + Self.requestTimeout) { connection.cancel() }
             connection.receive(minimumIncompleteLength: 1, maximumLength: Self.maxRequestBytes) { data, _, _, _ in
                 let request = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                let isStatsRequest = request.hasPrefix("GET \(RemoteNetwork.path) ") || request.hasPrefix("GET \(RemoteNetwork.path)?")
-                Task {
-                    let body = isStatsRequest ? await provider().flatMap { try? RemoteStats.encoder.encode($0) } : nil
-                    connection.send(content: RemoteHTTP.response(body), completion: .contentProcessed { _ in connection.cancel() })
+                // Other networks hand out 100.64.x.x addresses too, so the request must also have arrived on this Mac's Tailscale address.
+                guard RemoteNetwork.isOwnAddress(connection.currentPath?.localEndpoint), !RemoteHTTP.isFromBrowser(request) else {
+                    connection.cancel()
+                    return
+                }
+                Task { [weak self] in
+                    let response = await self?.response(to: request) ?? RemoteHTTP.response(nil)
+                    connection.send(content: response, completion: .contentProcessed { _ in connection.cancel() })
                 }
             }
         }
         listener.start(queue: queue)
         return listener
+    }
+
+    private func response(to request: String) async -> Data {
+        let (sharesStats, acceptsReports) = lock.withLock { (self.sharesStats, self.acceptsReports) }
+        if acceptsReports, BatteryReport.isReport(request) {
+            guard let report = BatteryReport.parse(request: request) else {
+                return RemoteHTTP.response(status: "400 Bad Request", message: "Send a name and a level from 0 to 100.")
+            }
+            guard ReportedBatteries.shared.record(report) else {
+                return RemoteHTTP.response(status: "429 Too Many Requests", message: "Herd already tracks \(ReportedBatteries.maxDevices) reporting devices.")
+            }
+            return RemoteHTTP.response(status: "200 OK", message: "Saved \(report.name) at \(Int(report.percent))%.")
+        }
+        let isStatsRequest = request.hasPrefix("GET \(RemoteNetwork.path) ") || request.hasPrefix("GET \(RemoteNetwork.path)?")
+        guard sharesStats, isStatsRequest else { return RemoteHTTP.response(nil) }
+        return RemoteHTTP.response(await provider().flatMap { try? RemoteStats.encoder.encode($0) })
     }
 }
 
@@ -67,6 +95,20 @@ enum RemoteHTTP {
         let status = body == nil ? "404 Not Found" : "200 OK"
         let payload = body ?? Data()
         let head = "HTTP/1.0 \(status)\r\nContent-Type: application/json\r\nContent-Length: \(payload.count)\r\nConnection: close\r\n\r\n"
+        return Data(head.utf8) + payload
+    }
+
+    // A web page can make the browser send requests from this Mac's own trusted address. Herd and Shortcuts never send these headers.
+    static func isFromBrowser(_ request: String) -> Bool {
+        request.split(separator: "\r\n").dropFirst().contains { line in
+            let header = line.lowercased()
+            return header.hasPrefix("origin:") || header.hasPrefix("referer:") || header.hasPrefix("sec-fetch-")
+        }
+    }
+
+    static func response(status: String, message: String) -> Data {
+        let payload = Data(message.utf8)
+        let head = "HTTP/1.0 \(status)\r\nContent-Type: text/plain; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\nContent-Length: \(payload.count)\r\nConnection: close\r\n\r\n"
         return Data(head.utf8) + payload
     }
 

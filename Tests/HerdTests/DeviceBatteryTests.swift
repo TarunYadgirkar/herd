@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Herd
 
@@ -47,5 +48,48 @@ import Testing
         let internalBattery: [String: Any] = ["Type": "InternalBattery", "Name": "InternalBattery-0", "Current Capacity": 76, "Max Capacity": 100]
         let away = Self.source("Keyboard", category: "Keyboard", percent: 50, extra: ["Is Present": false])
         #expect(AccessoryBatteries.parse([internalBattery, away]).isEmpty)
+    }
+}
+
+@Suite struct BatteryReportTests {
+    @Test func readsADeviceReportFromTheRequestLine() {
+        let report = BatteryReport.parse(request: "GET /battery?name=Tarun%27s%20iPhone&level=83&charging=Yes&kind=watch HTTP/1.1\r\nHost: mac\r\n\r\n")
+        #expect(report == BatteryReport(name: "Tarun's iPhone", percent: 83, isCharging: true, kind: .watch))
+    }
+
+    @Test func rejectsReportsWithoutAUsableNameOrLevel() {
+        #expect(BatteryReport.parse(request: "GET /battery?level=83 HTTP/1.1\r\n\r\n") == nil)
+        #expect(BatteryReport.parse(request: "GET /battery?name=iPhone&level=140 HTTP/1.1\r\n\r\n") == nil)
+        #expect(BatteryReport.parse(request: "GET /battery?name=iPhone&level=nan HTTP/1.1\r\n\r\n") == nil)
+        #expect(BatteryReport.parse(request: "GET /battery?name=\(String(repeating: "a", count: 41))&level=5 HTTP/1.1\r\n\r\n") == nil)
+        #expect(BatteryReport.parse(request: "GET /stats?name=iPhone&level=5 HTTP/1.1\r\n\r\n") == nil)
+        #expect(BatteryReport.parse(request: "DELETE /battery?name=iPhone&level=5 HTTP/1.1\r\n\r\n") == nil)
+    }
+
+    @Test func aNewReportReplacesTheLastAndOldOnesExpire() {
+        let store = ReportedBatteries()
+        let start = Date(timeIntervalSince1970: 1_000)
+        #expect(store.record(BatteryReport(name: "iPhone", percent: 80, isCharging: false, kind: .phone), at: start))
+        #expect(store.record(BatteryReport(name: "iphone", percent: 60, isCharging: false, kind: .phone), at: start + 60))
+        #expect(store.devices(at: start + 120).map(\.percent) == [60])
+        #expect(store.devices(at: start + 60 + ReportedBatteries.expiry).isEmpty)
+    }
+
+    @Test func refusesMoreDevicesThanTheLimit() {
+        let store = ReportedBatteries()
+        let now = Date(timeIntervalSince1970: 1_000)
+        for index in 0..<ReportedBatteries.maxDevices {
+            #expect(store.record(BatteryReport(name: "d\(index)", percent: 50, isCharging: false, kind: .phone), at: now))
+        }
+        #expect(!store.record(BatteryReport(name: "extra", percent: 50, isCharging: false, kind: .phone), at: now))
+    }
+}
+
+@Suite struct BrowserRequestTests {
+    @Test func requestsCarryingBrowserHeadersAreRecognised() {
+        #expect(RemoteHTTP.isFromBrowser("GET /battery?name=a&level=1 HTTP/1.1\r\nHost: 127.0.0.1\r\nSec-Fetch-Site: cross-site\r\n\r\n"))
+        #expect(RemoteHTTP.isFromBrowser("GET /stats HTTP/1.1\r\nReferer: http://example.com/\r\n\r\n"))
+        #expect(!RemoteHTTP.isFromBrowser("GET /stats HTTP/1.0\r\nHost: old-macbook\r\n\r\n"))
+        #expect(!RemoteHTTP.isFromBrowser("GET /battery?name=origin:&level=1 HTTP/1.1\r\nHost: 100.64.0.1\r\n\r\n"))
     }
 }

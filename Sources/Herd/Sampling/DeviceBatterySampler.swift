@@ -16,7 +16,10 @@ final class DeviceBatterySampler {
             accessories = AccessoryBatteries.read()
             phones.refresh()
         }
-        return phones.latest + accessories
+        let wired = phones.latest
+        // A phone on a cable is read directly, which is fresher than its last report.
+        let reported = ReportedBatteries.shared.devices().filter { report in !wired.contains { $0.name == report.name } }
+        return wired + reported + accessories
     }
 }
 

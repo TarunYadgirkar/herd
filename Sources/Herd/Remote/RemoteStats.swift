@@ -105,6 +105,46 @@ enum RemoteNetwork {
         return bytes[0] == 127 || (bytes[0] == 100 && bytes[1] & 0xC0 == 64)
     }
 
+    private static let tunnelPrefix = "utun"
+    private static let tailscaleIPv6Prefix: [UInt8] = [0xFD, 0x7A, 0x11, 0x5C, 0xA1, 0xE0]
+
+    static func isOwnAddress(_ local: NWEndpoint?) -> Bool {
+        guard case let .hostPort(host, _)? = local else { return false }
+        switch host {
+        case let .ipv4(address):
+            return isOwnAddress(ipv4: [UInt8](address.rawValue))
+        case let .ipv6(address):
+            let bytes = [UInt8](address.rawValue)
+            if address.isLoopback { return true }
+            if bytes.count == 16, bytes[0..<10].allSatisfy({ $0 == 0 }), bytes[10] == 0xFF, bytes[11] == 0xFF {
+                return isOwnAddress(ipv4: Array(bytes[12...]))
+            }
+            return bytes.starts(with: tailscaleIPv6Prefix)
+        default:
+            return false
+        }
+    }
+
+    private static func isOwnAddress(ipv4 bytes: [UInt8]) -> Bool {
+        bytes.first == 127 || bytes.map(String.init).joined(separator: ".") == tailscaleAddress()
+    }
+
+    // This Mac's own Tailscale address, which is what a phone has to send its battery report to.
+    static func tailscaleAddress() -> String? {
+        var first: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&first) == 0 else { return nil }
+        defer { freeifaddrs(first) }
+        for interface in sequence(first: first, next: { $0?.pointee.ifa_next }) {
+            guard let entry = interface?.pointee, let address = entry.ifa_addr, address.pointee.sa_family == UInt8(AF_INET),
+                  String(cString: entry.ifa_name).hasPrefix(tunnelPrefix) else { continue }
+            let bytes = address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
+                withUnsafeBytes(of: $0.pointee.sin_addr) { [UInt8]($0) }
+            }
+            if bytes[0] != 127, isTrusted(ipv4: bytes) { return bytes.map(String.init).joined(separator: ".") }
+        }
+        return nil
+    }
+
     // Hosts are typed by hand in Settings, separated by commas or spaces.
     static func hosts(from text: String) -> [String] {
         var seen = Set<String>()

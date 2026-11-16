@@ -25,8 +25,8 @@ struct DeviceBatteryView: View {
             value: Format.percent(percent),
             symbol: BatteryGlyph.symbol(percent: percent, isPowered: device.isCharging),
             symbolTint: BatteryGlyph.tint(percent: percent, isCharging: device.isCharging, isOnAC: false),
-            symbolLabel: device.isCharging ? "Charging" : "On battery",
-            caption: Text(device.isCharging ? "Charging" : "On battery"),
+            symbolLabel: Self.status(device),
+            caption: Text(Self.status(device)),
             stats: device.cells.count > 1 ? device.cells.map(Self.stat) : []
         ) {
             EmptyView()
@@ -36,6 +36,13 @@ struct DeviceBatteryView: View {
                 StatGrid(stats: device.details.map { PerformanceStat(label: $0.label, value: $0.value) })
             }
         }
+    }
+
+    private static func status(_ device: DeviceBattery) -> String {
+        let power = device.isCharging ? "Charging" : "On battery"
+        guard let reportedAt = device.reportedAt else { return power }
+        let age = max(Date().timeIntervalSince(reportedAt), 0)
+        return "\(power), reported \(age < 60 ? "just now" : "\(Format.duration(age)) ago")"
     }
 
     private static func stat(_ cell: DeviceBattery.Cell) -> PerformanceStat {

@@ -8,7 +8,7 @@ struct SettingsView: View {
         TabView {
             Tab("General", systemImage: "gearshape") { GeneralSettings() }
             Tab("Alerts", systemImage: "bell.badge") { AlertSettingsPane() }
-            Tab("Other Macs", systemImage: "laptopcomputer.and.arrow.down") { RemoteSettings() }
+            Tab("Other devices", systemImage: "laptopcomputer.and.iphone") { RemoteSettings() }
         }
         .formStyle(.grouped)
         .frame(width: Self.width)
@@ -145,12 +145,21 @@ private struct AlertSettingsPane: View {
 private struct RemoteSettings: View {
     @AppStorage(RemoteMonitor.shareKey) private var shareStats = false
     @AppStorage(RemoteMonitor.hostsKey) private var remoteHosts = ""
+    @AppStorage(ReportedBatteries.enabledKey) private var acceptReports = false
+
+    private var reportAddress: String? {
+        RemoteNetwork.tailscaleAddress().map { "http://\($0):\(RemoteNetwork.port)\(BatteryReport.path)?name=iPhone&level=" }
+    }
+
+    private func configureServer() {
+        AppDelegate.remoteServer.configure(sharesStats: shareStats, acceptsReports: acceptReports)
+    }
 
     var body: some View {
         Form {
             Section {
                 Toggle("Share this Mac's stats", isOn: $shareStats)
-                    .onChange(of: shareStats) { _, isOn in AppDelegate.remoteServer.setEnabled(isOn) }
+                    .onChange(of: shareStats) { configureServer() }
             } footer: {
                 SettingsFooter("Uses Tailscale. Only devices on your tailnet can read the shared stats (port \(String(RemoteNetwork.port))).")
             }
@@ -159,6 +168,27 @@ private struct RemoteSettings: View {
                     .onSubmit { AppDelegate.remote.refreshNow() }
             } footer: {
                 SettingsFooter("Tailscale names separated by commas. Each Mac needs Herd running with sharing turned on.")
+            }
+            Section {
+                Toggle("Show battery reports from my iPhone and Watch", isOn: $acceptReports)
+                    .onChange(of: acceptReports) { configureServer() }
+                if acceptReports, let reportAddress {
+                    LabeledContent("Report address") {
+                        Text(reportAddress)
+                            .font(.metricSmall)
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                    }
+                    Button("Copy address") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(reportAddress, forType: .string)
+                    }
+                }
+            } footer: {
+                SettingsFooter(acceptReports && reportAddress == nil
+                    ? "Tailscale isn't connected on this Mac, so there is no address to report to yet."
+                    : "In Shortcuts on the device, add Get Battery Level, then Get Contents of URL with this address and the battery level on the end. "
+                        + "Run it from an automation so it stays current. Add &kind=watch for a Watch. Only devices on your tailnet can report.")
             }
         }
     }

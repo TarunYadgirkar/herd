@@ -4,7 +4,7 @@ struct DeviceBatteriesCard: View {
     let devices: [DeviceBattery]
 
     static let howDevicesAppear = "Bluetooth accessories show up while they are connected to this Mac. "
-        + "An iPhone or iPad shows up while it is plugged in and trusts this Mac."
+        + "An iPhone or iPad shows up while it is plugged in, or when it reports its battery (Settings, Other devices)."
 
     var body: some View {
         PerformanceCard(title: "Devices") {
@@ -76,6 +76,7 @@ extension DeviceBattery {
         case .controller: "gamecontroller"
         case .phone: "iphone"
         case .tablet: "ipad"
+        case .watch: "applewatch"
         case .other: "dot.radiowaves.left.and.right"
         }
     }

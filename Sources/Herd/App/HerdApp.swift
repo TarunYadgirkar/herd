@@ -87,7 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             Self.store.alerts.requestAuthorization()
             Self.remote.start()
         }
-        Self.remoteServer.setEnabled(UserDefaults.standard.bool(forKey: RemoteMonitor.shareKey))
+        Self.remoteServer.configure(
+            sharesStats: UserDefaults.standard.bool(forKey: RemoteMonitor.shareKey),
+            acceptsReports: UserDefaults.standard.bool(forKey: ReportedBatteries.enabledKey)
+        )
         Task.detached { await RootHelper.shared.reregisterIfResigned() }
     }
 
