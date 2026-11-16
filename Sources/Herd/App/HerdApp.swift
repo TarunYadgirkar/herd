@@ -108,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             }
             switch action {
             case AlertAction.quit:
-                guard let group = Self.store.liveGroup(id: groupID), group.isSafeQuitTarget else { return }
+                guard let group = Self.store.liveGroup(id: groupID), ProcessActions.canAct(on: group) else { return }
                 _ = ProcessActions.perform(.quit, on: group)
             case AlertAction.ignore:
                 AlertSettings.ignore(groupID)

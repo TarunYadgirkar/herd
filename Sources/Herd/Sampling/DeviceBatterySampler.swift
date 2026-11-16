@@ -112,7 +112,8 @@ enum AccessoryBatteries {
         let category = category.lowercased()
         let kinds: [(String, DeviceBattery.Kind)] = [
             ("head", .audio), ("audio", .audio), ("speaker", .audio), ("keyboard", .keyboard),
-            ("mouse", .mouse), ("trackpad", .trackpad), ("game", .controller),
+            ("mouse", .mouse), ("trackpad", .trackpad), ("game", .controller), ("watch", .watch),
+            ("phone", .phone), ("tablet", .tablet),
         ]
         return kinds.first { category.contains($0.0) }?.1 ?? .other
     }
