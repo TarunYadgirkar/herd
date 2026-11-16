@@ -16,6 +16,7 @@ struct BatteryPerformanceView: View {
                 caption: Text(caption),
                 stats: headlineStats
             )
+            DeviceBatteriesCard(devices: system.deviceBatteries)
             PerformanceChart(
                 title: "Charge",
                 series: [ChartSeries(name: "Charge", color: ChartPalette.charge, values: context.values { $0.batteryPercent })],
@@ -34,8 +35,10 @@ struct BatteryPerformanceView: View {
             if let details = system.batteryDetails {
                 BatteryDetailsCard(details: details)
             }
+        } else if system.deviceBatteries.isEmpty {
+            SectionMessage(title: "No battery", symbol: "battery.0percent", message: DeviceBatteriesCard.howDevicesAppear)
         } else {
-            SectionMessage(title: "No battery", symbol: "battery.0percent")
+            DeviceBatteriesCard(devices: system.deviceBatteries)
         }
     }
 
@@ -117,6 +120,13 @@ enum BatteryGlyph {
         if percent <= criticalPercent { return Theme.critical }
         if percent <= lowPercent { return Theme.warning }
         return .secondary
+    }
+
+    static func levelTint(percent: Double, isCharging: Bool) -> Color {
+        if isCharging { return Theme.good }
+        if percent <= criticalPercent { return Theme.critical }
+        if percent <= lowPercent { return Theme.warning }
+        return Theme.accent
     }
 }
 

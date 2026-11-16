@@ -70,6 +70,7 @@ struct SystemSnapshot: Sendable {
     var thermal: ProcessInfo.ThermalState = .nominal
     var battery: BatteryInfo?
     var batteryDetails: BatteryDetails?
+    var deviceBatteries: [DeviceBattery] = []
     var power: PowerReading?
     var sensors: SensorReading?
     var kernelCPUPercent: Double?
