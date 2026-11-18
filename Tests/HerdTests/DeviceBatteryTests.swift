@@ -53,7 +53,7 @@ import Testing
 
 @Suite struct BatteryReportTests {
     @Test func readsADeviceReportFromTheRequestLine() {
-        let report = BatteryReport.parse(request: "GET /battery?name=Tarun%27s%20iPhone&level=83&charging=Yes&kind=watch HTTP/1.1\r\nHost: mac\r\n\r\n")
+        let report = BatteryReport.parse(request: "GET /battery?name=Tarun%27s%20iPhone&level=83&charging=Yes&kind=Apple%20Watch HTTP/1.1\r\nHost: mac\r\n\r\n")
         #expect(report == BatteryReport(name: "Tarun's iPhone", percent: 83, isCharging: true, kind: .watch))
     }
 

@@ -8,7 +8,8 @@ struct BatteryReport: Sendable, Equatable {
     private static let maxNameLength = 40
     private static let methods: Set<Substring> = ["GET", "POST"]
     private static let truthy: Set<String> = ["1", "true", "yes"]
-    private static let kinds: [String: DeviceBattery.Kind] = ["phone": .phone, "watch": .watch, "tablet": .tablet]
+    // Shortcuts sends the device's model name ("iPhone", "Apple Watch", "iPad"), so kinds match on a word inside it.
+    private static let kinds: [(String, DeviceBattery.Kind)] = [("watch", .watch), ("ipad", .tablet), ("tablet", .tablet), ("mac", .other)]
 
     let name: String
     let percent: Double
@@ -33,7 +34,7 @@ struct BatteryReport: Sendable, Equatable {
             name: name,
             percent: level,
             isCharging: truthy.contains((query["charging"] ?? "").lowercased()),
-            kind: kinds[(query["kind"] ?? "").lowercased()] ?? .phone
+            kind: kinds.first { (query["kind"] ?? "").lowercased().contains($0.0) }?.1 ?? .phone
         )
     }
 }
