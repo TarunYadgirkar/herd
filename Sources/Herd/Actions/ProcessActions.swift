@@ -79,6 +79,19 @@ enum ProcessActions {
     ]
     private static let systemPrefixes = ["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/", "/Library/Apple/"]
     private static let currentUid = getuid()
+    private static let startTolerance: TimeInterval = 1
+
+    // A sample can be minutes old while updates are paused, and macOS hands a finished process's pid to a new one.
+    // Signalling by pid alone could then hit a stranger, so the process must still have the start time Herd saw.
+    static func isStillRunning(_ sample: ProcessSample, kernel: KernelProcess?) -> Bool {
+        guard let kernel, kernel.pid == sample.pid else { return false }
+        guard let start = sample.startTime else { return true }
+        return abs(kernel.startTime.timeIntervalSince(start)) < startTolerance
+    }
+
+    private static func isStillRunning(_ sample: ProcessSample) -> Bool {
+        isStillRunning(sample, kernel: KernelProcessList.process(sample.pid))
+    }
 
     static func isProtected(_ sample: ProcessSample, for action: ProcessAction = .quit) -> Bool {
         if sample.pid <= 1 || sample.pid == getpid() || protectedNames.contains(sample.name) { return true }
@@ -96,7 +109,7 @@ enum ProcessActions {
     static func perform(_ action: ProcessAction, on group: AppGroup) -> ActionOutcome {
         if action == .quit, let app = runningApp(for: group) {
             // A stopped app can't handle the Quit Apple Event.
-            group.processes.map(\.sample).filter(\.isSuspended).forEach { kill($0.pid, SIGCONT); PauseLedger.forget($0) }
+            group.processes.map(\.sample).filter { $0.isSuspended && isStillRunning($0) }.forEach { kill($0.pid, SIGCONT); PauseLedger.forget($0) }
             if app.terminate() { return ActionOutcome(succeeded: 1, protectedNames: [], deniedNames: [], goneNames: []) }
         }
         if action == .forceQuit, let app = runningApp(for: group) {
@@ -121,6 +134,8 @@ enum ProcessActions {
         for sample in samples {
             if isProtected(sample, for: action) {
                 protected.insert(sample.name)
+            } else if !isStillRunning(sample) {
+                gone.insert(sample.name)
             } else if kill(sample.pid, action.signal) == 0 {
                 succeeded += 1
                 // A stopped process keeps SIGTERM pending until it's continued.
@@ -137,7 +152,8 @@ enum ProcessActions {
 
     @MainActor
     private static func runningApp(for group: AppGroup) -> NSRunningApplication? {
-        guard let pid = group.mainPid, let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy != .prohibited else { return nil }
+        guard let pid = group.mainPid, let main = group.processes.first(where: { $0.sample.pid == pid }), isStillRunning(main.sample),
+              let app = NSRunningApplication(processIdentifier: pid), app.activationPolicy != .prohibited else { return nil }
         return app
     }
 

@@ -16,6 +16,7 @@ actor SamplingEngine {
     private let networkSampler = NetworkSampler()
     private let sensorSampler = SensorSampler()
     private let batterySampler = BatterySampler()
+    private let deviceBatterySampler = DeviceBatterySampler()
     private let powerSampler = PowerSampler()
     private let grouper = AppGrouper()
     private var lastTickUptime: UInt64?
@@ -63,6 +64,7 @@ actor SamplingEngine {
         var system = systemSampler.sample()
         system.sensors = sensorSampler.sample()
         system.batteryDetails = batterySampler.sample()
+        system.deviceBatteries = deviceBatterySampler.sample()
         let chipPower = powerSampler.isAvailable ? powerSampler.sample() : system.sensors.flatMap(PowerReading.init(smc:))
         system.power = chipPower.map { reading in
             var merged = reading
