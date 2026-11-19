@@ -144,6 +144,46 @@ private func makeProject(_ root: URL, marker: String) throws {
         #expect(fresh.evaluate(frame(at: hold + 600, cpu: 150), maxGap: 6).isEmpty)
     }
 
+    private func memoryFrame(at seconds: TimeInterval, gigabytes: Double, thermal: ProcessInfo.ThermalState = .nominal) -> Frame {
+        let base = frame(at: seconds, cpu: 1)
+        var process = base.groups[0].processes[0].sample
+        process.memoryBytes = UInt64(gigabytes * 1_073_741_824)
+        let group = AppGroup(
+            id: base.groups[0].id, name: "Runaway", kind: .apps, bundlePath: "/Applications/Runaway.app", runtime: nil, mainPid: 77,
+            processes: [GroupedProcess(sample: process, title: "runaway", subtitle: nil)], metrics: Metrics(process), project: nil
+        )
+        var system = SystemSnapshot()
+        system.thermal = thermal
+        return Frame(date: base.date, elapsed: 2, system: system, groups: [group], processCount: 1)
+    }
+
+    @MainActor @Test func memoryTakenWhileAnAppLaunchesIsNotGrowth() {
+        let alerts = AlertMonitor()
+        var fired: [String] = []
+        for t in stride(from: 0.0, through: 100, by: 2) { fired += alerts.evaluate(memoryFrame(at: t, gigabytes: 0.5 + t / 20), maxGap: 6) }
+        for t in stride(from: 102.0, through: 900, by: 2) { fired += alerts.evaluate(memoryFrame(at: t, gigabytes: 5.5), maxGap: 6) }
+        #expect(fired.isEmpty)
+    }
+
+    @MainActor @Test func steadyGrowthAfterLaunchFiresEvenAcrossAWindowBoundary() {
+        let alerts = AlertMonitor()
+        var fired: [String] = []
+        for t in stride(from: 0.0, through: 200, by: 2) { fired += alerts.evaluate(memoryFrame(at: t, gigabytes: 1), maxGap: 6) }
+        // 3.5 GB over about eight minutes, which crosses a five-minute bucket boundary on the way.
+        for t in stride(from: 202.0, through: 680, by: 2) { fired += alerts.evaluate(memoryFrame(at: t, gigabytes: 1 + (t - 200) / 480 * 3.5), maxGap: 6) }
+        #expect(fired == ["memory:bundle:com.example.runaway"])
+    }
+
+    @MainActor @Test func heatAlertFollowsTheSystemThermalState() {
+        let alerts = AlertMonitor()
+        var fired: [String] = []
+        for t in stride(from: 0.0, through: 120, by: 2) { fired += alerts.evaluate(memoryFrame(at: t, gigabytes: 1, thermal: .fair), maxGap: 6) }
+        #expect(fired.isEmpty)
+        for t in stride(from: 122.0, through: 180, by: 2) { fired += alerts.evaluate(memoryFrame(at: t, gigabytes: 1, thermal: .serious), maxGap: 6) }
+        #expect(fired.isEmpty)
+        #expect(alerts.evaluate(memoryFrame(at: 182, gigabytes: 1, thermal: .serious), maxGap: 6) == ["heat"])
+    }
+
     private func strainedFrame(at seconds: TimeInterval, pressure: MemoryPressure, swapUsed: UInt64) -> Frame {
         let base = frame(at: seconds, cpu: 1)
         var system = SystemSnapshot()

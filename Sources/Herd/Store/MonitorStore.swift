@@ -105,7 +105,9 @@ final class MonitorStore {
 
     // Checked once per tick: unplugging or turning on Low Power Mode switches Automatic to Light by the next sample.
     private func updateEffort() {
-        let next = powerMode.effort(onBattery: PowerSource.isOnBattery, lowPowerMode: PowerSource.isLowPowerMode)
+        // The sampler already read the battery this tick, so the power source isn't asked again on the main thread.
+        let isOnBattery = latestFrame.map { $0.system.battery?.isOnAC == false } ?? PowerSource.isOnBattery
+        let next = powerMode.effort(onBattery: isOnBattery, lowPowerMode: PowerSource.isLowPowerMode)
         guard next != effort else { return }
         effort = next
         resizeHistory()
