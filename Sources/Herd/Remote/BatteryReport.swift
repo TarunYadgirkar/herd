@@ -43,10 +43,14 @@ struct BatteryReport: Sendable, Equatable {
         let query = Dictionary((components.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
         let name = String(String.UnicodeScalarView((query["name"] ?? "").unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }))
             .trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, name.count <= maxNameLength,
+        let model = (query["kind"] ?? "").trimmingCharacters(in: .whitespaces)
+        // A device can be named with punctuation alone ("..."), which says nothing in a list, so its model stands in.
+        let hasWords = name.contains { $0.isLetter || $0.isNumber }
+        let shownName = hasWords || model.isEmpty ? name : model
+        guard !shownName.isEmpty, shownName.count <= maxNameLength,
               let level = query["level"].flatMap(Double.init), (0...100).contains(level) else { return nil }
         return BatteryReport(
-            name: name,
+            name: shownName,
             percent: level,
             isCharging: truthy.contains((query["charging"] ?? "").lowercased()),
             kind: kinds.first { (query["kind"] ?? "").lowercased().contains($0.0) }?.1 ?? .phone

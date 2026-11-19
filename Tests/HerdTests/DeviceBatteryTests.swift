@@ -57,6 +57,12 @@ import Testing
         #expect(report == BatteryReport(name: "Tarun's iPhone", percent: 83, isCharging: true, kind: .watch))
     }
 
+    @Test func aNameWithoutWordsFallsBackToTheModel() {
+        let report = BatteryReport.parse(request: "GET /battery?name=...&kind=iPhone&level=52 HTTP/1.1\r\n\r\n")
+        #expect(report?.name == "iPhone")
+        #expect(report?.kind == .phone)
+    }
+
     @Test func rejectsReportsWithoutAUsableNameOrLevel() {
         #expect(BatteryReport.parse(request: "GET /battery?level=83 HTTP/1.1\r\n\r\n") == nil)
         #expect(BatteryReport.parse(request: "GET /battery?name=iPhone&level=140 HTTP/1.1\r\n\r\n") == nil)
