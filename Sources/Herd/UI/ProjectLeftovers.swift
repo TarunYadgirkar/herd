@@ -21,7 +21,7 @@ struct LeftoversSection: View {
                 }
             } else {
                 if report.leftovers.isEmpty {
-                    Text("Nothing here is safe to stop: each copy is the one its open session is still using.")
+                    Text("An open session still uses each copy, so none is safe to stop.")
                         .font(.captionText)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

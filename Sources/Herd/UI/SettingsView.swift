@@ -67,8 +67,7 @@ private struct GeneralSettings: View {
                 Text("System processes")
             } footer: {
                 SettingsFooter(
-                    "A small helper that runs as root reads exact numbers for system processes. "
-                        + "Without it they update every 10 seconds, with no power or disk figures."
+                    "This runs a helper as root. Without it, system processes update every 10 seconds and show no power or disk figures."
                 )
             }
         }
@@ -77,8 +76,8 @@ private struct GeneralSettings: View {
     private static var modeHelp: String {
         let light = Int(SamplingEffort.efficient.interval.rawValue)
         let full = Int(SamplingEffort.precise.interval.rawValue)
-        return "Light updates every \(light) seconds and uses the least power. Full updates every \(full == 1 ? "second" : "\(full) seconds") "
-            + "to catch short spikes. Automatic uses Full on the power adapter and Light on battery."
+        return "Light updates every \(light) seconds to save power. Full updates every \(full == 1 ? "second" : "\(full) seconds"). "
+            + "Automatic uses Full on the power adapter and Light on battery."
     }
 }
 
@@ -107,7 +106,7 @@ private struct AlertSettingsPane: View {
                     ForEach(Self.durations, id: \.self) { Text("\(Int($0)) min").tag($0) }
                 }
             } footer: {
-                SettingsFooter("100% is one full core, so 200% means two cores busy the whole time.")
+                SettingsFooter("100% is one full core.")
             }
             .disabled(!alertsEnabled)
             Section {
@@ -119,7 +118,7 @@ private struct AlertSettingsPane: View {
                     .disabled(ignoredCount == 0)
                 }
             } footer: {
-                SettingsFooter("Apps you silenced from an alert stay quiet until you reset them.")
+                SettingsFooter("Apps you silenced stay quiet until you reset them.")
             }
         }
         .task { await refreshNotificationStatus() }
@@ -147,12 +146,28 @@ private struct RemoteSettings: View {
     @AppStorage(RemoteMonitor.hostsKey) private var remoteHosts = ""
     @AppStorage(ReportedBatteries.enabledKey) private var acceptReports = false
 
-    private var reportAddress: String? {
-        RemoteNetwork.tailscaleAddress().map { "http://\($0):\(RemoteNetwork.port)\(BatteryReport.path)?name=iPhone&level=" }
-    }
+    @State private var isConfirmingReset = false
+
+    private var reportHost: String? { RemoteNetwork.tailscaleAddress() }
 
     private func configureServer() {
         AppDelegate.remoteServer.configure(sharesStats: shareStats, acceptsReports: acceptReports)
+    }
+
+    private func copy(_ text: String?) {
+        guard let text else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func copyReportAddress() {
+        guard let reportHost, let key = RemoteKey.own() else { return }
+        copy(BatteryReport.address(host: reportHost, key: key))
+    }
+
+    private func resetKey() {
+        RemoteKey.reset()
+        configureServer()
     }
 
     var body: some View {
@@ -161,36 +176,76 @@ private struct RemoteSettings: View {
                 Toggle("Share this Mac's stats", isOn: $shareStats)
                     .onChange(of: shareStats) { configureServer() }
             } footer: {
-                SettingsFooter("Uses Tailscale. Only devices on your tailnet can read the shared stats (port \(String(RemoteNetwork.port))).")
+                SettingsFooter("Herd shares over Tailscale (port \(String(RemoteNetwork.port))). A device needs this Mac's key to read the stats.")
+            }
+            Section {
+                LabeledContent("This Mac's key") {
+                    HStack(spacing: Theme.itemSpacing) {
+                        Button("Copy key") { copy(RemoteKey.own()) }
+                        Button("Reset key", role: .destructive) { isConfirmingReset = true }
+                    }
+                }
+                .confirmationDialog("Reset this Mac's key?", isPresented: $isConfirmingReset) {
+                    Button("Reset key", role: .destructive) { resetKey() }
+                } message: {
+                    Text("Your other Macs and Shortcuts stop working until they get the new key.")
+                }
+            } footer: {
+                SettingsFooter("Paste this key into Herd on each Mac that watches this one.")
             }
             Section {
                 TextField("Watch Macs", text: $remoteHosts, prompt: Text("old-macbook, mac-mini"))
                     .onSubmit { AppDelegate.remote.refreshNow() }
+                ForEach(RemoteNetwork.hosts(from: remoteHosts), id: \.self) { RemoteKeyRow(host: $0) }
             } footer: {
-                SettingsFooter("Tailscale names separated by commas. Each Mac needs Herd running with sharing turned on.")
+                SettingsFooter("Enter Tailscale names, separated by commas. Each Mac must share its stats and have its key pasted here.")
             }
             Section {
                 Toggle("Show battery reports from my iPhone and Watch", isOn: $acceptReports)
                     .onChange(of: acceptReports) { configureServer() }
-                if acceptReports, let reportAddress {
+                if acceptReports, let reportHost {
                     LabeledContent("Report address") {
-                        Text(reportAddress)
+                        Text("\(reportHost):\(String(RemoteNetwork.port))")
                             .font(.metricSmall)
-                            .textSelection(.enabled)
-                            .lineLimit(2)
                     }
-                    Button("Copy address") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(reportAddress, forType: .string)
-                    }
+                    Button("Copy address with key") { copyReportAddress() }
                 }
             } footer: {
-                SettingsFooter(acceptReports && reportAddress == nil
-                    ? "Tailscale isn't connected on this Mac, so there is no address to report to yet."
-                    : "In Shortcuts on the device, add Get Battery Level, then Get Contents of URL with this address and the battery level on the end. "
-                        + "Run it from an automation so it stays current. Add &kind=watch for a Watch. Only devices on your tailnet can report.")
+                SettingsFooter(acceptReports && reportHost == nil
+                    ? "Connect Tailscale on this Mac to get a report address."
+                    : "In Shortcuts on the device, add Get Battery Level, then Get Contents of URL with the copied address and the battery level on the end. "
+                        + "Run it from an automation. Add &kind=watch for a Watch.")
             }
         }
+    }
+}
+
+// The key of one watched Mac. It goes straight to the Keychain and is never shown again, so the row only says whether one is saved.
+private struct RemoteKeyRow: View {
+    let host: String
+
+    @State private var draft = ""
+    @State private var hasKey = false
+
+    var body: some View {
+        LabeledContent("Key for \(host)") {
+            HStack(spacing: Theme.itemSpacing) {
+                Image(systemName: hasKey ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(hasKey ? Theme.good : Theme.warning)
+                    .accessibilityLabel(hasKey ? "Key saved" : RemoteSummary.needsKey)
+                SecureField("Key for \(host)", text: $draft, prompt: Text(hasKey ? "Saved. Paste to replace" : "Paste that Mac's key"))
+                    .labelsHidden()
+                    .onChange(of: draft) { save() }
+            }
+        }
+        .task(id: host) { hasKey = AppDelegate.remote.hasKey(for: host) }
+    }
+
+    private func save() {
+        guard let key = RemoteKey.cleaned(draft) else { return }
+        AppDelegate.remote.setKey(key, for: host)
+        hasKey = AppDelegate.remote.hasKey(for: host)
+        draft = ""
     }
 }
 

@@ -45,6 +45,12 @@ struct BatteryInfo: Sendable, Equatable {
     var minutesRemaining: Int?
 }
 
+extension BatteryInfo {
+    init(_ details: BatteryDetails) {
+        self.init(percent: details.percent, isCharging: details.isCharging, isOnAC: details.isOnAC, minutesRemaining: details.minutesRemaining)
+    }
+}
+
 struct SystemSnapshot: Sendable {
     var cpuUser: Double = 0
     var cpuSystem: Double = 0

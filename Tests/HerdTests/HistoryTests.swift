@@ -127,6 +127,19 @@ private func temporaryDirectory() -> URL {
         #expect(restored.allSatisfy { $0.contributors == nil && $0.cpuUser == 0.25 })
     }
 
+    @MainActor @Test func savedHistoryIsReadableOnlyByItsOwner() throws {
+        let directory = temporaryDirectory()
+        let file = directory.appending(path: "history.json")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+        FileManager.default.createFile(atPath: file.path, contents: Data("{}".utf8), attributes: [.posixPermissions: 0o644])
+        let archive = HistoryArchive(directory: directory)
+        archive.record(SystemSnapshot(), groups: [], elapsed: 2, rateWindow: 2, at: Date())
+        archive.save(waitUntilWritten: true)
+        let mode = { (url: URL) in try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int }
+        #expect(try mode(file) == 0o600)
+        #expect(try mode(directory) == 0o700)
+    }
+
     @MainActor @Test func dayOfHistoryWithContributorsStaysSmall() throws {
         let directory = temporaryDirectory()
         let archive = HistoryArchive(directory: directory)

@@ -4,7 +4,6 @@ import IOKit
 import IOKit.ps
 
 final class SystemSampler {
-    private static let batteryRefreshInterval: Duration = .seconds(30)
     private static let percentScale = 100.0
     private static let attosecondsPerSecond = 1e18
 
@@ -19,8 +18,6 @@ final class SystemSampler {
     private var lastInterfaceBytes: [String: InterfaceBytes] = [:]
     private var interfaceNames: [UInt16: String] = [:]
     private var lastDiskBytes: DiskBytes?
-    private var cachedBattery: BatteryInfo?
-    private var lastBatteryRefresh: ContinuousClock.Instant?
 
     init() {
         var size: vm_size_t = 0
@@ -46,7 +43,6 @@ final class SystemSampler {
         snapshot.loadAverage = Self.loadAverage()
         snapshot.gpuUtilization = Self.gpuUtilization()
         snapshot.thermal = ProcessInfo.processInfo.thermalState
-        snapshot.battery = battery(at: now)
         snapshot.uptime = ProcessInfo.processInfo.systemUptime
         return snapshot
     }
@@ -303,50 +299,6 @@ extension SystemSampler {
     private static func dictionaryProperty(_ entry: io_registry_entry_t, _ key: String) -> [String: Any]? {
         IORegistryEntryCreateCFProperty(entry, key as CFString, kCFAllocatorDefault, 0)?
             .takeRetainedValue() as? [String: Any]
-    }
-}
-
-// MARK: - Battery
-
-extension SystemSampler {
-    private func battery(at now: ContinuousClock.Instant) -> BatteryInfo? {
-        if let last = lastBatteryRefresh, now - last < Self.batteryRefreshInterval {
-            return cachedBattery
-        }
-        lastBatteryRefresh = now
-        cachedBattery = Self.readBattery()
-        return cachedBattery
-    }
-
-    private static func readBattery() -> BatteryInfo? {
-        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let sources = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else { return nil }
-        for source in sources {
-            guard let description = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any],
-                  description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType else { continue }
-            return batteryInfo(from: description)
-        }
-        return nil
-    }
-
-    private static func batteryInfo(from description: [String: Any]) -> BatteryInfo? {
-        guard let current = description[kIOPSCurrentCapacityKey] as? Int,
-              let capacity = description[kIOPSMaxCapacityKey] as? Int, capacity > 0 else { return nil }
-        let isCharging = description[kIOPSIsChargingKey] as? Bool ?? false
-        let isOnAC = description[kIOPSPowerSourceStateKey] as? String == kIOPSACPowerValue
-        return BatteryInfo(
-            percent: Double(current) / Double(capacity) * percentScale,
-            isCharging: isCharging,
-            isOnAC: isOnAC,
-            minutesRemaining: minutesRemaining(description, isCharging: isCharging, isOnAC: isOnAC)
-        )
-    }
-
-    private static func minutesRemaining(_ description: [String: Any], isCharging: Bool, isOnAC: Bool) -> Int? {
-        if isOnAC && !isCharging { return nil }
-        let key = isCharging ? kIOPSTimeToFullChargeKey : kIOPSTimeToEmptyKey
-        guard let minutes = description[key] as? Int, minutes >= 0 else { return nil }
-        return minutes
     }
 }
 

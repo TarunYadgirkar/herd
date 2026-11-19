@@ -64,6 +64,7 @@ actor SamplingEngine {
         var system = systemSampler.sample()
         system.sensors = sensorSampler.sample()
         system.batteryDetails = batterySampler.sample()
+        system.battery = system.batteryDetails.map(BatteryInfo.init)
         system.deviceBatteries = deviceBatterySampler.sample()
         let chipPower = powerSampler.isAvailable ? powerSampler.sample() : system.sensors.flatMap(PowerReading.init(smc:))
         system.power = chipPower.map { reading in

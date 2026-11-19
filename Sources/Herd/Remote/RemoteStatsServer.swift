@@ -5,6 +5,7 @@ import os
 // Answers GET /stats with this Mac's RemoteStats as JSON, for Herd on the user's other Macs,
 // and takes battery reports from the user's phone and watch on /battery.
 // Only Tailscale peers get an answer; everyone else is disconnected before anything is read.
+// A peer also has to send this Mac's key, and one that doesn't is dropped without a reply, whatever it asked for.
 final class RemoteStatsServer: @unchecked Sendable {
     nonisolated private static let log = Logger(subsystem: "com.tarunyadgirkar.herd", category: "remote")
     private static let maxRequestBytes = 4096
@@ -15,6 +16,7 @@ final class RemoteStatsServer: @unchecked Sendable {
     private var listener: NWListener?
     private var sharesStats = false
     private var acceptsReports = false
+    private var key: String?
     private let provider: @Sendable () async -> RemoteStats?
 
     init(provider: @escaping @Sendable () async -> RemoteStats?) {
@@ -27,6 +29,7 @@ final class RemoteStatsServer: @unchecked Sendable {
         self.sharesStats = sharesStats
         self.acceptsReports = acceptsReports
         let isEnabled = sharesStats || acceptsReports
+        key = isEnabled ? RemoteKey.own() : nil
         if isEnabled, listener == nil {
             listener = makeListener()
         } else if !isEnabled {
@@ -59,7 +62,8 @@ final class RemoteStatsServer: @unchecked Sendable {
             connection.receive(minimumIncompleteLength: 1, maximumLength: Self.maxRequestBytes) { data, _, _, _ in
                 let request = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
                 // Other networks hand out 100.64.x.x addresses too, so the request must also have arrived on this Mac's Tailscale address.
-                guard RemoteNetwork.isOwnAddress(connection.currentPath?.localEndpoint), !RemoteHTTP.isFromBrowser(request) else {
+                let isAuthorized = self?.isAuthorized(request) ?? false
+                guard isAuthorized, RemoteNetwork.isOwnAddress(connection.currentPath?.localEndpoint), !RemoteHTTP.isFromBrowser(request) else {
                     connection.cancel()
                     return
                 }
@@ -71,6 +75,10 @@ final class RemoteStatsServer: @unchecked Sendable {
         }
         listener.start(queue: queue)
         return listener
+    }
+
+    private func isAuthorized(_ request: String) -> Bool {
+        RemoteKey.isAuthorized(request, key: lock.withLock { key })
     }
 
     private func response(to request: String) async -> Data {

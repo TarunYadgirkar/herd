@@ -36,9 +36,15 @@ enum AlertAction {
 final class AlertMonitor {
     nonisolated private static let log = Logger(subsystem: "com.tarunyadgirkar.herd", category: "alerts")
 
-    private struct Streak {
-        var since: Date
-        var startMemory: UInt64
+    // Memory is compared with the lowest reading of the last one to two half-windows, so growth that straddles
+    // a window boundary still counts and a drop in use lowers the baseline at once.
+    private struct MemoryBaseline {
+        let firstSeen: Date
+        var bucketStart: Date
+        var previousLow: UInt64
+        var currentLow: UInt64
+
+        var low: UInt64 { min(previousLow, currentLow) }
     }
 
     private static let cooldown: TimeInterval = 30 * 60
@@ -46,11 +52,12 @@ final class AlertMonitor {
     private static let strainHold: TimeInterval = 2 * 60
     private static let memoryGrowthWindow: TimeInterval = 10 * 60
     private static let memoryGrowthBytes: UInt64 = 3 * 1_073_741_824
-    private static let hotCelsius = 100.0
+    // An app that is still launching, or a virtual machine that is booting, takes gigabytes in its first minutes by design.
+    private static let launchGrace: TimeInterval = 2 * 60
     private static let hotHold: TimeInterval = 60
 
     private var cpuStreaks: [String: Date] = [:]
-    private var memoryBaselines: [String: Streak] = [:]
+    private var memoryBaselines: [String: MemoryBaseline] = [:]
     private var lastAlert: [String: Date] = [:]
     private var strainedSince: Date?
     private var hotSince: Date?
@@ -100,15 +107,17 @@ final class AlertMonitor {
     private func checkRunawayCPU(_ groups: [AppGroup], at now: Date) {
         let threshold = AlertSettings.cpuThreshold
         let hold = AlertSettings.cpuMinutes * 60
+        // The app in front is the one being used, so its work is expected; a runaway is something busy in the background.
+        let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
         var next: [String: Date] = [:]
-        for group in groups where group.metrics.cpu >= threshold {
+        for group in groups where group.metrics.cpu >= threshold && !(frontPid.map(group.pids.contains) ?? false) {
             let since = cpuStreaks[group.id] ?? now
             next[group.id] = since
             guard now.timeIntervalSince(since) >= hold else { continue }
             notify(
                 key: "cpu:\(group.id)", group: group, at: now,
                 title: "\(group.name) is working hard",
-                body: "It has used over \(Int(threshold))% CPU for \(Self.minutes(AlertSettings.cpuMinutes)). Quit it if you're not expecting this."
+                body: "It has used over \(Int(threshold))% CPU for \(Self.minutes(AlertSettings.cpuMinutes))."
             )
         }
         cpuStreaks = next
@@ -120,14 +129,23 @@ final class AlertMonitor {
     }
 
     private func checkMemoryGrowth(_ groups: [AppGroup], at now: Date) {
-        var next: [String: Streak] = [:]
+        var next: [String: MemoryBaseline] = [:]
         for group in groups {
-            var baseline = memoryBaselines[group.id] ?? Streak(since: now, startMemory: group.metrics.memory)
-            if group.metrics.memory < baseline.startMemory || now.timeIntervalSince(baseline.since) > Self.memoryGrowthWindow {
-                baseline = Streak(since: now, startMemory: group.metrics.memory)
+            let memory = group.metrics.memory
+            let fresh = MemoryBaseline(firstSeen: now, bucketStart: now, previousLow: memory, currentLow: memory)
+            var baseline = memoryBaselines[group.id] ?? fresh
+            if now.timeIntervalSince(baseline.firstSeen) < Self.launchGrace {
+                next[group.id] = MemoryBaseline(firstSeen: baseline.firstSeen, bucketStart: now, previousLow: memory, currentLow: memory)
+                continue
             }
+            if now.timeIntervalSince(baseline.bucketStart) > Self.memoryGrowthWindow / 2 {
+                baseline.bucketStart = now
+                baseline.previousLow = baseline.currentLow
+                baseline.currentLow = memory
+            }
+            baseline.currentLow = min(baseline.currentLow, memory)
             next[group.id] = baseline
-            let growth = group.metrics.memory > baseline.startMemory ? group.metrics.memory - baseline.startMemory : 0
+            let growth = memory > baseline.low ? memory - baseline.low : 0
             guard growth >= Self.memoryGrowthBytes else { continue }
             notify(
                 key: "memory:\(group.id)", group: group, at: now,
@@ -165,7 +183,8 @@ final class AlertMonitor {
     }
 
     private func checkHeat(_ system: SystemSnapshot, at now: Date) {
-        guard let celsius = system.sensors?.cpuMaxCelsius, celsius >= Self.hotCelsius else {
+        // One core touching 100 °C is normal under load. macOS's own thermal state says when heat is actually costing speed.
+        guard system.thermal.rawValue >= ProcessInfo.ThermalState.serious.rawValue else {
             hotSince = nil
             return
         }
@@ -175,7 +194,7 @@ final class AlertMonitor {
         notify(
             key: "heat", group: nil, at: now,
             title: "Your Mac is running hot",
-            body: "The CPU has stayed above \(PerformanceFormat.temperature(Self.hotCelsius)) for a minute. macOS may slow it down to cool off."
+            body: "macOS is slowing the Mac down to cool it off."
         )
     }
 

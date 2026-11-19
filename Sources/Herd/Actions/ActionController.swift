@@ -69,10 +69,10 @@ struct PendingAction: Identifiable {
         switch action {
         case .forceQuit: "Unsaved changes in \(name) will be lost."
         case .quit: quitsLikeAnApp
-            ? "\(name) will quit the way it does from its own Quit command."
-            : "Herd will ask \(name) to exit. Programs that ignore the request keep running; ones that don't handle it stop without saving."
-        case .suspend: "\(name) will freeze until you resume it. Herd resumes it automatically if Herd quits."
-        case .resume: "\(name) will continue where it left off."
+            ? "\(name) quits as it does from its own Quit command."
+            : "Herd asks \(name) to exit. It can ignore the request, or stop without saving."
+        case .suspend: "\(name) freezes until you resume it. Herd resumes it if Herd quits."
+        case .resume: "\(name) continues where it left off."
         }
     }
 
@@ -129,7 +129,7 @@ final class ActionController {
 
     static func refusal(_ action: ProcessAction, _ group: AppGroup) -> String {
         guard group.isSafeQuitTarget else {
-            return "\(group.name) holds \(group.processes.count) separate processes. Expand it and choose the one to \(action.title.lowercased())."
+            return "\(group.name) has \(group.processes.count) processes. Expand it and choose one to \(action.title.lowercased())."
         }
         return "\(group.name) keeps macOS running, so Herd won't \(action.title.lowercased()) it."
     }
@@ -169,7 +169,7 @@ final class ActionController {
         switch pending.target {
         case .group(let snapshot):
             guard let current = store.liveGroup(id: snapshot.id) else {
-                show("\(snapshot.name) has already quit.")
+                show("\(snapshot.name) has already exited.")
                 return
             }
             guard ProcessActions.canAct(on: current, action: pending.action) else {
@@ -186,7 +186,7 @@ final class ActionController {
         case .processes(let items, let title):
             let current = items.compactMap { store.liveProcess(id: $0.sample.id) }
             guard !current.isEmpty else {
-                show("\(title) had already exited.")
+                show("\(title) has already exited.")
                 return
             }
             show(ProcessActions.perform(pending.action, on: current).message(for: pending.action, name: title))

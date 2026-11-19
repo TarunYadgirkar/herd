@@ -22,6 +22,14 @@ HERD_ARCHS=arm64 ./scripts/build-app.sh  # one architecture only, faster for loc
 swiftlint lint                   # cyclomatic complexity stays at 15 or below
 ```
 
+## Other devices
+
+Herd can show your other Macs, and your iPhone and Watch batteries, over Tailscale (Settings > Other devices). Each Mac that shares has its own key, kept in the login Keychain. Nothing is answered without it.
+
+- **Watch another Mac.** On the Mac to watch, turn on "Share this Mac's stats" and click "Copy key". On this Mac, add its Tailscale name under "Watch Macs" and paste the key into the field beside that name. A Mac without a key shows "Needs key" in the sidebar.
+- **Report an iPhone or Watch battery.** Turn on "Show battery reports from my iPhone and Watch" and click "Copy address with key". In Shortcuts on the device, add Get Battery Level, then Get Contents of URL with that address and the battery level on the end. The address looks like `http://100.x.y.z:47787/battery?key=<key>&name=iPhone&level=`. Add `&kind=watch` for a Watch.
+- **Reset key** makes a new key. Every Mac and Shortcut that used the old one needs the new one.
+
 ## Layout
 
 | Folder | What lives there |
@@ -30,6 +38,7 @@ swiftlint lint                   # cyclomatic complexity stays at 15 or below
 | `Sources/HerdHelper` | Root helper daemon: returns process counters over XPC, nothing else |
 | `Sources/HerdHelperKit` | XPC protocol and data shared by Herd and the helper |
 | `Sources/Herd/Grouping` | Assigns processes to apps, runtimes and standalone tools |
+| `Sources/Herd/Remote` | Stats sharing between your Macs and battery reports from your phone, over Tailscale and behind a per-Mac key |
 | `Sources/Herd/Store` | Sampling engine actor, observable store, history archive, alerts |
 | `Sources/Herd/UI` | SwiftUI views; `UI/Performance` holds the graph pages |
 | `Sources/Herd/Actions` | Quit, force quit, pause, efficiency mode, sample |

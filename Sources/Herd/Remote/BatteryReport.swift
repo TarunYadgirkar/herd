@@ -2,11 +2,11 @@ import Foundation
 import os
 
 // A phone or watch can't be asked for its charge over the network, so it tells Herd instead:
-// a Shortcuts automation opens /battery?name=iPhone&level=83 on this Mac over Tailscale.
+// a Shortcuts automation opens /battery?key=…&name=iPhone&level=83 on this Mac over Tailscale.
 struct BatteryReport: Sendable, Equatable {
     static let path = "/battery"
     private static let maxNameLength = 40
-    private static let methods: Set<Substring> = ["GET", "POST"]
+    private static let method = "GET"
     private static let truthy: Set<String> = ["1", "true", "yes"]
     // Shortcuts sends the device's model name ("iPhone", "Apple Watch", "iPad"), so kinds match on a word inside it.
     private static let kinds: [(String, DeviceBattery.Kind)] = [("watch", .watch), ("ipad", .tablet), ("tablet", .tablet), ("mac", .other)]
@@ -17,21 +17,40 @@ struct BatteryReport: Sendable, Equatable {
     let kind: DeviceBattery.Kind
 
     static func isReport(_ request: String) -> Bool {
-        methods.contains { request.hasPrefix("\($0) \(path)?") || request.hasPrefix("\($0) \(path) ") }
+        request.hasPrefix("\(method) \(path)?") || request.hasPrefix("\(method) \(path) ")
+    }
+
+    // The address the owner pastes into Shortcuts, which adds the battery level on the end.
+    static func address(host: String, key: String) -> String? {
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = host
+        components.port = Int(RemoteNetwork.port)
+        components.path = path
+        components.queryItems = [
+            URLQueryItem(name: RemoteKey.queryName, value: key),
+            URLQueryItem(name: "name", value: "iPhone"),
+            URLQueryItem(name: "level", value: ""),
+        ]
+        return components.string
     }
 
     static func parse(request: String) -> BatteryReport? {
         guard let line = request.split(separator: "\r\n", omittingEmptySubsequences: false).first else { return nil }
         let parts = line.split(separator: " ")
-        guard parts.count == 3, methods.contains(parts[0]),
+        guard parts.count == 3, parts[0] == method,
               let components = URLComponents(string: String(parts[1])), components.path == path else { return nil }
         let query = Dictionary((components.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
         let name = String(String.UnicodeScalarView((query["name"] ?? "").unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }))
             .trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, name.count <= maxNameLength,
+        let model = (query["kind"] ?? "").trimmingCharacters(in: .whitespaces)
+        // A device can be named with punctuation alone ("..."), which says nothing in a list, so its model stands in.
+        let hasWords = name.contains { $0.isLetter || $0.isNumber }
+        let shownName = hasWords || model.isEmpty ? name : model
+        guard !shownName.isEmpty, shownName.count <= maxNameLength,
               let level = query["level"].flatMap(Double.init), (0...100).contains(level) else { return nil }
         return BatteryReport(
-            name: name,
+            name: shownName,
             percent: level,
             isCharging: truthy.contains((query["charging"] ?? "").lowercased()),
             kind: kinds.first { (query["kind"] ?? "").lowercased().contains($0.0) }?.1 ?? .phone

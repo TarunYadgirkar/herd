@@ -3,8 +3,8 @@ import SwiftUI
 struct DeviceBatteriesCard: View {
     let devices: [DeviceBattery]
 
-    static let howDevicesAppear = "Bluetooth accessories show up while they are connected to this Mac. "
-        + "An iPhone or iPad shows up while it is plugged in, or when it reports its battery (Settings, Other devices)."
+    static let howDevicesAppear = "Bluetooth accessories appear while connected. "
+        + "An iPhone or iPad appears while plugged in, or when it reports its battery (Settings, Other devices)."
 
     var body: some View {
         PerformanceCard(title: "Devices") {
