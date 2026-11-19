@@ -27,7 +27,7 @@ struct RemoteMacView: View {
 
     @ViewBuilder
     private func content(mac: RemoteMac?, now: Date) -> some View {
-        if let stats = mac?.stats {
+        if let stats = mac?.stats, mac?.needsKey != true {
             header(stats, mac: mac, now: now)
             PerformanceCard(title: "System") {
                 StatGrid(stats: RemoteSummary.systemStats(stats))
@@ -64,7 +64,10 @@ enum RemoteSummary {
     private static let hotCelsius = 90.0
     private static let warmCelsius = 75.0
 
+    static let needsKey = "Needs key"
+
     static func sidebar(_ mac: RemoteMac?, now: Date) -> String {
+        if mac?.needsKey == true { return needsKey }
         guard let mac, let stats = mac.stats else { return mac?.failure == nil ? PerformanceFormat.missing : "Offline" }
         guard mac.isOnline(at: now) else { return "Offline" }
         let parts = [stats.batteryPercent.map(Format.percent), stats.cpuCelsius.map(PerformanceFormat.temperature)].compactMap(\.self)
@@ -72,8 +75,11 @@ enum RemoteSummary {
     }
 
     static func waiting(_ mac: RemoteMac?) -> String {
+        if mac?.needsKey == true {
+            return "\(needsKey). On that Mac, open Herd's Settings, go to Other devices and copy its key. Then paste it next to that Mac's name in Settings here."
+        }
         guard let failure = mac?.failure else { return "Connecting…" }
-        return "\(failure). Herd must be running there with “Share this Mac's stats” on in Settings, and both Macs on Tailscale."
+        return "\(failure). Herd must be running there with “Share this Mac's stats” on in Settings, both Macs on Tailscale, and that Mac's key pasted in Settings here."
     }
 
     static func freshness(_ mac: RemoteMac?, now: Date) -> String {

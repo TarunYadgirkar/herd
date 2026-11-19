@@ -64,6 +64,8 @@ import Testing
         #expect(BatteryReport.parse(request: "GET /battery?name=\(String(repeating: "a", count: 41))&level=5 HTTP/1.1\r\n\r\n") == nil)
         #expect(BatteryReport.parse(request: "GET /stats?name=iPhone&level=5 HTTP/1.1\r\n\r\n") == nil)
         #expect(BatteryReport.parse(request: "DELETE /battery?name=iPhone&level=5 HTTP/1.1\r\n\r\n") == nil)
+        #expect(BatteryReport.parse(request: "POST /battery?name=iPhone&level=5 HTTP/1.1\r\n\r\n") == nil)
+        #expect(!BatteryReport.isReport("POST /battery?name=iPhone&level=5 HTTP/1.1\r\n\r\n"))
     }
 
     @Test func aNewReportReplacesTheLastAndOldOnesExpire() {

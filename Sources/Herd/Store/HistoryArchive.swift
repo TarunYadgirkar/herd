@@ -15,6 +15,9 @@ final class HistoryArchive {
     private static let ledgerCapacity = 500
     private static let ledgerTrimSlack = 100
     private static let fileName = "history.json"
+    // History names every app the owner ran, so other accounts on this Mac can't read it. Closing the folder also covers the moment before the file's own mode is set.
+    nonisolated private static let directoryPermissions = 0o700
+    nonisolated private static let filePermissions = 0o600
     nonisolated private static let log = Logger(subsystem: "Herd", category: "HistoryArchive")
     nonisolated private static let writer = DispatchQueue(label: "Herd.HistoryArchive.writer", qos: .utility)
 
@@ -203,8 +206,11 @@ extension HistoryArchive {
 
     nonisolated private static func write(_ data: Data, to url: URL, in directory: URL) {
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let files = FileManager.default
+            try files.createDirectory(at: directory, withIntermediateDirectories: true)
+            try files.setAttributes([.posixPermissions: directoryPermissions], ofItemAtPath: directory.path)
             try data.write(to: url, options: .atomic)
+            try files.setAttributes([.posixPermissions: filePermissions], ofItemAtPath: url.path)
         } catch {
             log.error("Saving history failed: \(error.localizedDescription, privacy: .public)")
         }
