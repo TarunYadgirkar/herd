@@ -76,10 +76,10 @@ enum RemoteSummary {
 
     static func waiting(_ mac: RemoteMac?) -> String {
         if mac?.needsKey == true {
-            return "\(needsKey). On that Mac, open Herd's Settings, go to Other devices and copy its key. Then paste it next to that Mac's name in Settings here."
+            return "\(needsKey). On that Mac, copy the key from Settings, Other devices. Paste it next to that Mac's name in Settings here."
         }
         guard let failure = mac?.failure else { return "Connecting…" }
-        return "\(failure). Herd must be running there with “Share this Mac's stats” on in Settings, both Macs on Tailscale, and that Mac's key pasted in Settings here."
+        return "\(failure). Check that Herd shares stats on that Mac, both Macs are on Tailscale, and its key is saved here."
     }
 
     static func freshness(_ mac: RemoteMac?, now: Date) -> String {

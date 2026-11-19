@@ -45,12 +45,12 @@ enum ProcessTools {
 
     private static func sampleFailure(name: String, output: String) -> String {
         if output.contains("privileges") || output.contains("not permitted") {
-            return "macOS doesn't let Herd sample \(name). Apps with the hardened runtime and processes owned by the system can only be sampled with sudo in Terminal."
+            return "macOS blocks sampling \(name). Run sample with sudo in Terminal instead."
         }
         if output.contains("does not exist") || output.contains("No such process") {
             return "\(name) exited before Herd could sample it."
         }
-        return "Herd couldn't sample \(name). Apps with the hardened runtime block sampling unless you run sample with sudo in Terminal."
+        return "Herd couldn't sample \(name). Run sample with sudo in Terminal to see why."
     }
 
     // PRIO_DARWIN_BG puts the whole task in the background band: efficiency cores on Apple silicon and throttled disk I/O.
@@ -58,13 +58,13 @@ enum ProcessTools {
     static func setEfficiencyMode(_ isOn: Bool, pid: pid_t, name: String) -> String {
         if setpriority(PRIO_DARWIN_PROCESS, id_t(pid), isOn ? PRIO_DARWIN_BG : 0) == 0 {
             return isOn
-                ? "Herd moved \(name) to the efficiency cores. It keeps running, just slower and cooler."
+                ? "\(name) now runs on the efficiency cores, slower and cooler."
                 : "\(name) is back to normal priority."
         }
         // No nice fallback: an unprivileged user can't raise nice back, so the toggle couldn't undo it.
         switch errno {
         case ESRCH: return "\(name) has already exited."
-        case EPERM: return "macOS doesn't let Herd change the priority of \(name), because it belongs to another user or the system."
+        case EPERM: return "macOS blocks priority changes for \(name). It belongs to another user or the system."
         default: return "Herd couldn't change the priority of \(name)."
         }
     }
