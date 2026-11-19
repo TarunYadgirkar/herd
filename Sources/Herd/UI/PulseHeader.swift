@@ -27,6 +27,17 @@ private enum TileKind: Int, Identifiable, Comparable {
         }
     }
 
+    var section: PerformanceSection {
+        switch self {
+        case .cpu: .cpu
+        case .memory: .memory
+        case .gpu: .gpu
+        case .network: .network
+        case .disk: .disk
+        case .power: .battery
+        }
+    }
+
     static func < (lhs: TileKind, rhs: TileKind) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
@@ -111,12 +122,31 @@ private struct Tile<Accessory: View, Content: View>: View {
     let title: String
     let kind: TileKind
     let summary: String
+    var section: PerformanceSection?
     @ViewBuilder let accessory: Accessory
     @ViewBuilder let content: Content
 
+    @AppStorage("sidebarItem") private var sidebarItem = SidebarItem.processes.rawValue
+    @State private var isHovered = false
+
     private static var headerHeight: CGFloat { 18 }
 
+    private var destination: PerformanceSection { section ?? kind.section }
+
     var body: some View {
+        Button {
+            sidebarItem = SidebarItem.performance(destination).rawValue
+        } label: {
+            label
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help("Open \(destination.title)")
+        .accessibilityLabel(summary)
+        .accessibilityHint("Opens \(destination.title)")
+    }
+
+    private var label: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: Theme.itemSpacing) {
                 Text(title)
@@ -131,15 +161,15 @@ private struct Tile<Accessory: View, Content: View>: View {
         .padding(.horizontal, Theme.innerPadding)
         .padding(.vertical, Theme.itemSpacing)
         .frame(minWidth: kind.idealWidth, idealWidth: kind.idealWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .surface()
+        .background(isHovered ? Theme.surfaceRaised : Theme.surface, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(summary)
     }
 }
 
 extension Tile where Accessory == EmptyView {
     init(title: String, kind: TileKind, summary: String, @ViewBuilder content: () -> Content) {
-        self.init(title: title, kind: kind, summary: summary, accessory: { EmptyView() }, content: content)
+        self.init(title: title, kind: kind, summary: summary, section: nil, accessory: { EmptyView() }, content: content)
     }
 }
 
@@ -389,10 +419,8 @@ private struct PowerTile: View {
     let battery: BatteryInfo?
     let thermal: ProcessInfo.ThermalState
 
-    private static let lowBattery = 20.0
-
     var body: some View {
-        Tile(title: battery == nil ? "Temperature" : "Battery", kind: .power, summary: summary) {
+        Tile(title: battery == nil ? "Temperature" : "Battery", kind: .power, summary: summary, section: battery == nil ? .sensors : .battery) {
             ThermalGlyph(thermal: thermal)
         } content: {
             if let battery {
@@ -405,9 +433,9 @@ private struct PowerTile: View {
 
     private func batteryContent(_ battery: BatteryInfo) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: Self.symbol(for: battery))
+            Image(systemName: BatteryGlyph.symbol(percent: battery.percent, isPowered: battery.isCharging || battery.isOnAC))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(glyphColor(battery))
+                .foregroundStyle(BatteryGlyph.tint(percent: battery.percent, isCharging: battery.isCharging, isOnAC: battery.isOnAC))
             Text(Format.percent(battery.percent)).font(.display)
             if let remaining = Self.remaining(battery) {
                 Text(remaining)
@@ -415,26 +443,6 @@ private struct PowerTile: View {
                     .foregroundStyle(.secondary)
                     .fixedSize()
             }
-        }
-    }
-
-    private func isLow(_ battery: BatteryInfo) -> Bool {
-        !battery.isOnAC && battery.percent < Self.lowBattery
-    }
-
-    private func glyphColor(_ battery: BatteryInfo) -> Color {
-        if isLow(battery) { return Theme.critical }
-        return battery.isOnAC ? Theme.good : .secondary
-    }
-
-    private static func symbol(for battery: BatteryInfo) -> String {
-        if battery.isCharging || battery.isOnAC { return "battery.100percent.bolt" }
-        switch battery.percent {
-        case 88...: return "battery.100percent"
-        case 63..<88: return "battery.75percent"
-        case 38..<63: return "battery.50percent"
-        case 13..<38: return "battery.25percent"
-        default: return "battery.0percent"
         }
     }
 
