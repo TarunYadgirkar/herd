@@ -7,6 +7,7 @@ struct RemoteMacView: View {
     @Environment(RemoteMonitor.self) private var remote
 
     private static let tick: TimeInterval = 5
+    private static let keyFieldWidth: CGFloat = 360
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: Self.tick)) { timeline in
@@ -39,6 +40,12 @@ struct RemoteMacView: View {
             }
         } else {
             SectionMessage(title: host, symbol: "laptopcomputer", message: RemoteSummary.waiting(mac))
+            if mac?.needsKey == true || mac?.failure != nil {
+                RemoteKeyField(host: host, prompt: RemoteKeyField.pastePrompt) {}
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: Self.keyFieldWidth)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -60,6 +67,30 @@ struct RemoteMacView: View {
     }
 }
 
+// A watched Mac's key goes straight to the Keychain and is never shown again, so the field empties once a whole key is pasted.
+struct RemoteKeyField: View {
+    static let pastePrompt = "Paste that Mac's key"
+
+    let host: String
+    let prompt: String
+    let onSave: () -> Void
+
+    @State private var draft = ""
+
+    var body: some View {
+        SecureField("Key for \(host)", text: $draft, prompt: Text(prompt))
+            .labelsHidden()
+            .onChange(of: draft) { save() }
+    }
+
+    private func save() {
+        guard let key = RemoteKey.cleaned(draft) else { return }
+        AppDelegate.remote.setKey(key, for: host)
+        draft = ""
+        if AppDelegate.remote.hasKey(for: host) { onSave() }
+    }
+}
+
 enum RemoteSummary {
     private static let hotCelsius = 90.0
     private static let warmCelsius = 75.0
@@ -76,10 +107,10 @@ enum RemoteSummary {
 
     static func waiting(_ mac: RemoteMac?) -> String {
         if mac?.needsKey == true {
-            return "\(needsKey). On that Mac, copy the key from Settings, Other devices. Paste it next to that Mac's name in Settings here."
+            return "\(needsKey). On that Mac, copy the key from Settings, Other devices. Paste it below."
         }
         guard let failure = mac?.failure else { return "Connecting…" }
-        return "\(failure). Check that Herd shares stats on that Mac, both Macs are on Tailscale, and its key is saved here."
+        return "\(failure). Check that Herd shares stats on that Mac, both Macs are on Tailscale, and the key below is that Mac's current one."
     }
 
     static func freshness(_ mac: RemoteMac?, now: Date) -> String {

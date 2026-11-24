@@ -224,7 +224,6 @@ private struct RemoteSettings: View {
 private struct RemoteKeyRow: View {
     let host: String
 
-    @State private var draft = ""
     @State private var hasKey = false
 
     var body: some View {
@@ -233,19 +232,10 @@ private struct RemoteKeyRow: View {
                 Image(systemName: hasKey ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(hasKey ? Theme.good : Theme.warning)
                     .accessibilityLabel(hasKey ? "Key saved" : RemoteSummary.needsKey)
-                SecureField("Key for \(host)", text: $draft, prompt: Text(hasKey ? "Saved. Paste to replace" : "Paste that Mac's key"))
-                    .labelsHidden()
-                    .onChange(of: draft) { save() }
+                RemoteKeyField(host: host, prompt: hasKey ? "Saved. Paste to replace" : RemoteKeyField.pastePrompt) { hasKey = true }
             }
         }
         .task(id: host) { hasKey = AppDelegate.remote.hasKey(for: host) }
-    }
-
-    private func save() {
-        guard let key = RemoteKey.cleaned(draft) else { return }
-        AppDelegate.remote.setKey(key, for: host)
-        hasKey = AppDelegate.remote.hasKey(for: host)
-        draft = ""
     }
 }
 
